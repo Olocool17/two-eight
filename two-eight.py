@@ -1,6 +1,7 @@
 import curses
+import asyncio
 
-class Two_eight:
+class TwoEight:
     def __init__(self):
         curses.wrapper(self._init_window)
     def _init_window(self, stdscr):
@@ -16,7 +17,7 @@ class Two_eight:
         self.draw_frame()
         self.screen.refresh()
 
-        self.pads = [Week_pad(self.screen, self.y - 2, self.x - 2, 1, 1, 48)]
+        self.pads = [WeekPad(self.screen, self.y - 2, self.x - 2, 1, 1, 48)]
 
     def input_loop(self):
         while True:
@@ -35,7 +36,7 @@ class Two_eight:
         self.screen.border(0,0,0,0,0,0,0,0)
         self.screen.addstr(0, (self.x // 2) - len("two-eight") // 2, "two-eight", curses.A_REVERSE)
 
-class Scroll_vert_pad:
+class VertScrollPad:
     def __init__(self, screen, padheight, padwidth, clipheight, clipwidth, clipuly, clipulx):
         self.screen = screen
         self.pad = curses.newpad(padheight, padwidth+1)
@@ -43,34 +44,33 @@ class Scroll_vert_pad:
         self.clipheight, self.clipwidth = min(padheight, clipheight), min(padwidth, clipwidth)
         self.clipuly, self.clipulx = clipuly, clipulx
         self.scroll = 0
-        self.scrolldelta = 4
         self.pad.clear()
         self.refresh()
         
     def refresh(self):
         self.pad.refresh(self.scroll, 0, self.clipuly, self.clipulx, self.clipuly + self.clipheight - 1, self.clipulx + self.clipwidth - 1)
     
-    def scroll_down(self):
-        self.scroll = min(self.scroll + self.scrolldelta, self.padheight - self.clipheight)
+    def scroll_down(self, scrolldelta = 4):
+        self.scroll = min(self.scroll + scrolldelta, self.padheight - self.clipheight)
         self.refresh()
 
-    def scroll_up(self):
-        self.scroll = max(self.scroll - self.scrolldelta, 0)
+    def scroll_up(self, scrolldelta = 4):
+        self.scroll = max(self.scroll - scrolldelta, 0)
         self.refresh()
 
-class Week_pad(Scroll_vert_pad):
+class WeekPad(VertScrollPad):
     def  __init__(self, screen, clipheight, clipwidth, clipuly, clipulx, nr_timesegments):
+        self.weekdata = WeekData.dummy()
         super().__init__(screen, nr_timesegments, 48, clipheight, clipwidth, clipuly, clipulx)
         if (nr_timesegments % 24 != 0 and 24 % nr_timesegments != 0):
-            raise Exception()
+            pass
+            #PH : Log warning here
         for i in range(nr_timesegments):
             minutes = int(i*(24 / nr_timesegments)*60)
             self.pad.addstr(i, 0,f"{minutes // 60:02d}:{minutes % 60:02d}", curses.A_DIM)
             if i > self.clipheight + self.scroll:
                 self.scroll += self.clipheight
                 self.refresh()
-        self.scroll = 0
-
         self.days = 7
         self.segments = nr_timesegments #time segments per day
 
@@ -102,44 +102,108 @@ class Week_pad(Scroll_vert_pad):
             return
         self.select()
 
-class Week_data(): #Backend for week_pad class
-    def __init__(self, nr_timesegments, activities, timetable):
-
-
-class Parser():
-    def __init__(self, dbfile_path = "data.te"):
-        self.dbfile_path = dbfile_path
-    def parse_week(self, week, year):
-        with open(dbfile_path, mode='r', encoding='utf-8') as infile:
-            while(infile.readline() != [str(year), str(week)] == e.replace('\n', '').split(' ')):
-                nr_timesegments, nr_activities = infile.readline().replace('\n', '').split(' ')
-                nr_timesegments, nr_activities = int(nr_timesegments), int(nr_activities)
-                activities = []
-                for _ in range(nr_activities):
-                    try:
-                        name, color = infile.readline().replace('\n', '').split(' ')
-                    except ValueError():
-                        #PH : Log warning here
-                        return
-                    activities.append(Activity(name, color))
-                timetable = [[0 for j in range(nr_timesegments)]for i in range(7)]
-                for i in range(nr_timesegments):
-                    row = infile.readline().replace('\n', '').split(' ')
-                    for j in range(7):
-                        timetable[j,i] = row[j]
-
 class Activity():
-    def __init__(self, name, color):
+    def __init__(self, name: str, color, desc=''):
         self.name = name
-        self.color
+        self.color = color
+        self.desc = desc
+
+class Activities():
+    def  __init__(self, activities: set = {}):
+        self.dict = {activity.name:activity for activity in activities}
+    def add_activity(self, activity):
+        self.dict.update({activity.name:activity})
 
 class Timeslot():
-    def __init(self, plan, verify):
+    def __init__(self, plan: Activity, verify: Activity):
         self.plan = plan
         self.verify = verify
+    @classmethod
+    def from_strings(cls, plan: str, verify: str, activities: Activities):
+        try:
+            plan = activities.dict[plan]
+        except KeyError:
+            return
+            #PH : Log warning here
+        if verify == ' ':
+            return cls(plan, None)
+        try:
+            verify = activities.dict[verify]
+        except KeyError:
+            return
+            #PH : Log warning here
+        return cls(plan, verify)
 
 
-def center_string(string, width):
-    return (width // 2) - len(string) // 2, string
+class WeekData(): #Backend for week_pad class
+    def __init__(self, nr_timesegments : int, activities : Activities, timetable : list):
+        self.nr_timesegments = nr_timesegments
+        self.activities = activities
+        self.timetable = timetable
 
-Two_eight()
+    @staticmethod
+    def from_file(parser: Parser, week: int, year: int):
+        return parser.parse_week(week, year)
+    #Returns a week_data object with placeholder data
+    @classmethod
+    def dummy(cls):
+        return cls(48, Activities({Activity('dummy', 0)}), [[Timeslot.from_strings('dummy', 'dummy') for j in range(7)] for i in range(48)])
+
+class Parser():
+    delimiter = '\t'
+    @classmethod
+    def parse_next_line(cls, file):
+        line = file.readline().replace('\n', '').split(cls.delimiter)
+        return line
+    def __init__(self, dbfile_path = "data.te"):
+        #Check if filepath is valid
+        try:
+            file = open(dbfile_path, mode='r', encoding='utf-8')
+            file.close()
+        except FileNotFoundError:
+            return
+            #PH : Log warning here
+        except:
+            return
+            #PH : Log warning here
+        self.dbfile_path = dbfile_path
+
+    def parse_week(self, week: int, year: int) -> WeekData:
+        year, week = str(year), str(week)
+        with open(self.dbfile_path, mode='r', encoding='utf-8') as infile:
+            while(Parser.parse_next_line(infile) != [year, week]):
+                pass
+            nr_timesegments, nr_activities = Parser.parse_next_line(infile)
+            nr_timesegments, nr_activities = int(nr_timesegments), int(nr_activities)
+            activities = Parser.parse_activities(nr_activities, nr_timesegments, infile)
+            timetable = Parser.parse_timetable(nr_timesegments, activities, infile)
+            return WeekData(nr_timesegments, activities, timetable)
+
+    @staticmethod
+    def parse_activities(nr_activities: int, infile) -> Activities:
+        activities = Activities()
+        for _ in range(nr_activities):
+            try:
+                name, color = Parser.parse_next_line(infile)
+            except ValueError():
+                #PH : Log warning here
+                return
+            activities.add_activity(Activity(name, color))
+        Parser.parse_next_line(infile)
+        return activities
+
+    @staticmethod
+    def parse_timetable(nr_timesegments: int, activities: int, infile, verify : bool = True) -> list:
+        timetable = [[0]*7 for _ in range(nr_timesegments)]
+        for i in range(nr_timesegments):
+            row = Parser.parse_next_line(infile)
+            for j in range(7):
+                timetable[i][j] = Timeslot.from_strings(*row[2*j:2*j+2], activities)
+        return timetable
+
+
+async def main():
+    TwoEight()
+
+if __name__ == "__main__":
+    asyncio.run(main())
