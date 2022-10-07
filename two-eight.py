@@ -59,12 +59,12 @@ class Scroll_vert_pad:
         self.refresh()
 
 class Week_pad(Scroll_vert_pad):
-    def  __init__(self, screen, clipheight, clipwidth, clipuly, clipulx, timesegments):
-        super().__init__(screen, timesegments, 48, clipheight, clipwidth, clipuly, clipulx)
-        if (timesegments % 24 != 0 and 24 % timesegments != 0):
+    def  __init__(self, screen, clipheight, clipwidth, clipuly, clipulx, nr_timesegments):
+        super().__init__(screen, nr_timesegments, 48, clipheight, clipwidth, clipuly, clipulx)
+        if (nr_timesegments % 24 != 0 and 24 % nr_timesegments != 0):
             raise Exception()
-        for i in range(timesegments):
-            minutes = int(i*(24 / timesegments)*60)
+        for i in range(nr_timesegments):
+            minutes = int(i*(24 / nr_timesegments)*60)
             self.pad.addstr(i, 0,f"{minutes // 60:02d}:{minutes % 60:02d}", curses.A_DIM)
             if i > self.clipheight + self.scroll:
                 self.scroll += self.clipheight
@@ -72,7 +72,7 @@ class Week_pad(Scroll_vert_pad):
         self.scroll = 0
 
         self.days = 7
-        self.segments = timesegments #time segments per day
+        self.segments = nr_timesegments #time segments per day
 
         self.selected = 0
         self.select()
@@ -101,6 +101,43 @@ class Week_pad(Scroll_vert_pad):
         else:
             return
         self.select()
+
+class Week_data(): #Backend for week_pad class
+    def __init__(self, nr_timesegments, activities, timetable):
+
+
+class Parser():
+    def __init__(self, dbfile_path = "data.te"):
+        self.dbfile_path = dbfile_path
+    def parse_week(self, week, year):
+        with open(dbfile_path, mode='r', encoding='utf-8') as infile:
+            while(infile.readline() != [str(year), str(week)] == e.replace('\n', '').split(' ')):
+                nr_timesegments, nr_activities = infile.readline().replace('\n', '').split(' ')
+                nr_timesegments, nr_activities = int(nr_timesegments), int(nr_activities)
+                activities = []
+                for _ in range(nr_activities):
+                    try:
+                        name, color = infile.readline().replace('\n', '').split(' ')
+                    except ValueError():
+                        #PH : Log warning here
+                        return
+                    activities.append(Activity(name, color))
+                timetable = [[0 for j in range(nr_timesegments)]for i in range(7)]
+                for i in range(nr_timesegments):
+                    row = infile.readline().replace('\n', '').split(' ')
+                    for j in range(7):
+                        timetable[j,i] = row[j]
+
+class Activity():
+    def __init__(self, name, color):
+        self.name = name
+        self.color
+
+class Timeslot():
+    def __init(self, plan, verify):
+        self.plan = plan
+        self.verify = verify
+
 
 def center_string(string, width):
     return (width // 2) - len(string) // 2, string
