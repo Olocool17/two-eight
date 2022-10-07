@@ -1,5 +1,5 @@
 import curses
-import asyncio
+import time
 
 class TwoEight:
     def __init__(self):
@@ -34,8 +34,8 @@ class TwoEight:
 
     def draw_frame(self):
         self.screen.border(0,0,0,0,0,0,0,0)
-        self.screen.addstr(0, (self.x // 2) - len("two-eight") // 2, "two-eight", curses.A_REVERSE)
-
+        self.screen.addstr(0, (self.x // 2) - len("two-eight") // 2, "two-eight", curses.A_REVERSE) 
+    
 class VertScrollPad:
     def __init__(self, screen, padheight, padwidth, clipheight, clipwidth, clipuly, clipulx):
         self.screen = screen
@@ -202,8 +202,8 @@ class Parser():
         return timetable
 
 
-async def main():
+def main():
     TwoEight()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
