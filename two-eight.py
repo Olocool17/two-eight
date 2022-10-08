@@ -142,12 +142,13 @@ class WeekData(): #Backend for week_pad class
         self.timetable = timetable
 
     @staticmethod
-    def from_file(parser: Parser, week: int, year: int):
+    def from_file(parser, week: int, year: int):
         return parser.parse_week(week, year)
     #Returns a week_data object with placeholder data
     @classmethod
     def dummy(cls):
-        return cls(48, Activities({Activity('dummy', 0)}), [[Timeslot.from_strings('dummy', 'dummy') for j in range(7)] for i in range(48)])
+        activities = Activities({Activity('dummy', 0)})
+        return cls(48, activities, [[Timeslot.from_strings('dummy', 'dummy', activities) for j in range(7)] for i in range(48)])
 
 class Parser():
     delimiter = '\t'
