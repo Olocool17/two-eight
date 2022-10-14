@@ -35,14 +35,22 @@ class TwoEight:
     def draw_frame(self):
         self.screen.border(0,0,0,0,0,0,0,0)
         self.screen.addstr(0, (self.x // 2) - len("two-eight") // 2, "two-eight", curses.A_REVERSE) 
-    
-class VertScrollPad:
+
+class Pad:
     def __init__(self, screen, padheight, padwidth, clipheight, clipwidth, clipuly, clipulx):
         self.screen = screen
         self.pad = curses.newpad(padheight, padwidth+1)
         self.padheight, self.padwidth = padheight, padwidth
         self.clipheight, self.clipwidth = min(padheight, clipheight), min(padwidth, clipwidth)
-        self.clipuly, self.clipulx = clipuly, clipulx
+        self.clipuly, self.clipulx = clipuly, clipulx     
+    def refresh(self):
+        self.pad.refresh(0, 0, self.clipuly, self.clipulx, self.clipuly + self.clipheight - 1, self.clipulx + self.clipwidth - 1)
+    def subpad(self, padheight, padwidth, paduly, padulx):
+        return self.pad.subpad(padheight, padwidth, paduly, padulx)
+
+class VertScrollPad(Pad):
+    def __init__(self, screen, padheight, padwidth, clipheight, clipwidth, clipuly, clipulx):
+        super().__init__(screen, padheight, padwidth, clipheight, clipwidth, clipuly, clipulx)
         self.scroll = 0
         self.pad.clear()
         self.refresh()
@@ -60,7 +68,7 @@ class VertScrollPad:
 
 class WeekPad(VertScrollPad):
     def  __init__(self, screen, clipheight, clipwidth, clipuly, clipulx, nr_timesegments):
-        self.weekdata = WeekData.dummy()
+        self.weekdata = WeekData.dummy(nr_timesegments)
         super().__init__(screen, nr_timesegments, 48, clipheight, clipwidth, clipuly, clipulx)
         if (nr_timesegments % 24 != 0 and 24 % nr_timesegments != 0):
             pass
@@ -72,32 +80,33 @@ class WeekPad(VertScrollPad):
                 self.scroll += self.clipheight
                 self.refresh()
         self.days = 7
-        self.segments = nr_timesegments #time segments per day
+        self.nr_timesegments = nr_timesegments #time segments per day
 
-        self.selected = 0
+        self.selected = [0, 0]
         self.select()
  
     def select(self):
-        self.selected = self.selected % (self.segments * self.days)
-        self.scroll = min(self.padheight - self.clipheight, self.selected % self.segments)
+        self.selected[0] %= self.nr_timesegments
+        self.selected[1] %= self.days
+        self.scroll = min(self.padheight - self.clipheight, self.selected[0])
         self.refresh()
         self.clear_select()
-        self.pad.addstr(self.selected % self.segments, 5 + (self.selected // self.segments) * 6, ">     <")
+        self.pad.addstr(self.selected[0], 5 + self.selected[1] * 6, ">     <")
         self.refresh()
 
     def clear_select(self):
         for i in range(self.days+1):
-            for j in range(self.segments):
+            for j in range(self.nr_timesegments):
                 self.pad.addch(j, 5 + i * 6, ' ')
     def input_loop(self, c):
         if c == ord('i'):
-            self.selected -= 1
+            self.selected[0] -= 1
         elif c == ord('k'):
-            self.selected += 1
+            self.selected[0] += 1
         elif c == ord('j'):
-            self.selected -= self.segments
+            self.selected[1] -= 1
         elif c == ord('l'):
-            self.selected += self.segments
+            self.selected[1] += 1
         else:
             return
         self.select()
@@ -111,6 +120,7 @@ class Activity():
 class Activities():
     def  __init__(self, activities: set = {}):
         self.dict = {activity.name:activity for activity in activities}
+
     def add_activity(self, activity):
         self.dict.update({activity.name:activity})
 
@@ -118,6 +128,7 @@ class Timeslot():
     def __init__(self, plan: Activity, verify: Activity):
         self.plan = plan
         self.verify = verify
+
     @classmethod
     def from_strings(cls, plan: str, verify: str, activities: Activities):
         try:
@@ -134,7 +145,6 @@ class Timeslot():
             #PH : Log warning here
         return cls(plan, verify)
 
-
 class WeekData(): #Backend for week_pad class
     def __init__(self, nr_timesegments : int, activities : Activities, timetable : list):
         self.nr_timesegments = nr_timesegments
@@ -146,9 +156,9 @@ class WeekData(): #Backend for week_pad class
         return parser.parse_week(week, year)
     #Returns a week_data object with placeholder data
     @classmethod
-    def dummy(cls):
+    def dummy(cls, nr_timesegments):
         activities = Activities({Activity('dummy', 0)})
-        return cls(48, activities, [[Timeslot.from_strings('dummy', 'dummy', activities) for j in range(7)] for i in range(48)])
+        return cls(nr_timesegments, activities, [[Timeslot.from_strings('dummy', 'dummy', activities) for j in range(7)] for i in range(nr_timesegments)])
 
 class Parser():
     delimiter = '\t'
