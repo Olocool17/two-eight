@@ -7,6 +7,8 @@ class TwoEight:
     def _init_window(self, stdscr):
         self.screen = stdscr
         curses.use_default_colors()
+        curses.curs_set(0)
+        self.screen.leaveok(False)
         self.resize()
         self.input_loop()
 
@@ -17,7 +19,7 @@ class TwoEight:
         self.draw_frame()
         self.screen.refresh()
 
-        self.pads = [WeekPad(self.screen, self.y - 2, self.x - 2, 1, 1, 48)]
+        self.pads = [WeekPad(self.screen, self.y - 2, self.x - 2, 1, 1, WeekData.dummy(48))]
 
     def input_loop(self):
         while True:
@@ -67,37 +69,38 @@ class VertScrollPad(Pad):
         self.refresh()
 
 class WeekPad(VertScrollPad):
-    def  __init__(self, screen, clipheight, clipwidth, clipuly, clipulx, nr_timesegments):
-        self.weekdata = WeekData.dummy(nr_timesegments)
-        super().__init__(screen, nr_timesegments, 48, clipheight, clipwidth, clipuly, clipulx)
-        if (nr_timesegments % 24 != 0 and 24 % nr_timesegments != 0):
+    def  __init__(self, screen, clipheight, clipwidth, clipuly, clipulx, weekdata):
+        self.weekdata = weekdata
+        super().__init__(screen, self.weekdata.nr_timesegments, 48, clipheight, clipwidth, clipuly, clipulx)
+        if (self.weekdata.nr_timesegments % 24 != 0 and 24 % self.weekdata.nr_timesegments != 0):
             pass
             #PH : Log warning here
-        for i in range(nr_timesegments):
-            minutes = int(i*(24 / nr_timesegments)*60)
+        for i in range(self.weekdata.nr_timesegments):
+            minutes = int(i*(24 / self.weekdata.nr_timesegments)*60)
             self.pad.addstr(i, 0,f"{minutes // 60:02d}:{minutes % 60:02d}", curses.A_DIM)
             if i > self.clipheight + self.scroll:
                 self.scroll += self.clipheight
                 self.refresh()
         self.days = 7
-        self.nr_timesegments = nr_timesegments #time segments per day
 
         self.selected = [0, 0]
         self.select()
  
     def select(self):
-        self.selected[0] %= self.nr_timesegments
+        self.selected[0] %= self.weekdata.nr_timesegments
         self.selected[1] %= self.days
         self.scroll = min(self.padheight - self.clipheight, self.selected[0])
         self.refresh()
         self.clear_select()
         self.pad.addstr(self.selected[0], 5 + self.selected[1] * 6, ">     <")
+        curses.setsyx(self.selected[0], 5 + self.selected[1] * 6 + 2,)
         self.refresh()
 
     def clear_select(self):
         for i in range(self.days+1):
-            for j in range(self.nr_timesegments):
+            for j in range(self.weekdata.nr_timesegments):
                 self.pad.addch(j, 5 + i * 6, ' ')
+
     def input_loop(self, c):
         if c == ord('i'):
             self.selected[0] -= 1
@@ -111,18 +114,15 @@ class WeekPad(VertScrollPad):
             return
         self.select()
 
+class ActivityPad(VertScrollPad):
+    def __init__(self, screen, clipheight, clipwidth, clipuly, clipulx, activtities):
+        pass
+
 class Activity():
     def __init__(self, name: str, color, desc=''):
         self.name = name
         self.color = color
         self.desc = desc
-
-class Activities():
-    def  __init__(self, activities: set = {}):
-        self.dict = {activity.name:activity for activity in activities}
-
-    def add_activity(self, activity):
-        self.dict.update({activity.name:activity})
 
 class Timeslot():
     def __init__(self, plan: Activity, verify: Activity):
@@ -130,23 +130,23 @@ class Timeslot():
         self.verify = verify
 
     @classmethod
-    def from_strings(cls, plan: str, verify: str, activities: Activities):
+    def from_strings(cls, plan: str, verify: str, activities: dict):
         try:
-            plan = activities.dict[plan]
+            plan = activities[plan]
         except KeyError:
             return
             #PH : Log warning here
         if verify == ' ':
             return cls(plan, None)
         try:
-            verify = activities.dict[verify]
+            verify = activities[verify]
         except KeyError:
             return
             #PH : Log warning here
         return cls(plan, verify)
 
 class WeekData(): #Backend for week_pad class
-    def __init__(self, nr_timesegments : int, activities : Activities, timetable : list):
+    def __init__(self, nr_timesegments : int, activities : dict, timetable : list):
         self.nr_timesegments = nr_timesegments
         self.activities = activities
         self.timetable = timetable
@@ -157,8 +157,8 @@ class WeekData(): #Backend for week_pad class
     #Returns a week_data object with placeholder data
     @classmethod
     def dummy(cls, nr_timesegments):
-        activities = Activities({Activity('dummy', 0)})
-        return cls(nr_timesegments, activities, [[Timeslot.from_strings('dummy', 'dummy', activities) for j in range(7)] for i in range(nr_timesegments)])
+        activities ={'dummy' : Activity('dummy', 0), 'dummy_verify' : Activity('dummy_verify', 1)}
+        return cls(nr_timesegments, activities, [[Timeslot.from_strings('dummy', 'dummy_verify', activities) for j in range(7)] for i in range(nr_timesegments)])
 
 class Parser():
     delimiter = '\t'
@@ -191,15 +191,15 @@ class Parser():
             return WeekData(nr_timesegments, activities, timetable)
 
     @staticmethod
-    def parse_activities(nr_activities: int, infile) -> Activities:
-        activities = Activities()
+    def parse_activities(nr_activities: int, infile) -> dict:
+        activities = dict()
         for _ in range(nr_activities):
             try:
                 name, color = Parser.parse_next_line(infile)
             except ValueError():
                 #PH : Log warning here
                 return
-            activities.add_activity(Activity(name, color))
+            activities.update({name : Activity(name, color)})
         Parser.parse_next_line(infile)
         return activities
 
