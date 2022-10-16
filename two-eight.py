@@ -83,7 +83,7 @@ class Pad:
         for x in range(self.clipwidth):
             coords = self.clipuly + self.clipheight, self.clipulx + x
             if self.screen.inch(*coords) & 0xFF == 35:
-                continueAd
+                continue
             painted_char = '─'
             self.screen.addch(*coords, painted_char)
         self.screen.refresh()
