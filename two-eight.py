@@ -183,28 +183,28 @@ class Timeslot():
             return
             #PH : Log warning here
         return cls(plan, verify)
-
-class WeekData(): #Backend for week_pad class
-    def __init__(self, nr_timesegments : int, activities : dict, timetable : list):
+class WeekData():
+    """ Backend for week_pad class """
+    def __init__(self, nr_timesegments : int, activities : dict, timetable : list, week : int = 0, year : int = 0):
         self.nr_timesegments = nr_timesegments
         self.activities = activities
         self.timetable = timetable
+        self.week = week
+        self.year = year
 
     @staticmethod
     def from_file(parser, week: int, year: int):
         return parser.parse_week(week, year)
-    #Returns a week_data object with placeholder data
     @classmethod
     def dummy(cls, nr_timesegments):
+        """Returns a week_data object with placeholder dummy data"""
         activities ={'dummy' : Activity('dummy', 0), 'dummy_verify' : Activity('dummy_verify', 1)}
         return cls(nr_timesegments, activities, [[Timeslot.from_strings('dummy', 'dummy_verify', activities) for j in range(7)] for i in range(nr_timesegments)])
 
 class Parser():
+    """Manages reading and writing from/to database file"""
     delimiter = '\t'
-    @classmethod
-    def parse_next_line(cls, file):
-        line = file.readline().replace('\n', '').split(cls.delimiter)
-        return line
+
     def __init__(self, dbfile_path = "data.te"):
         #Check if filepath is valid
         try:
@@ -219,37 +219,43 @@ class Parser():
         self.dbfile_path = dbfile_path
 
     def parse_week(self, week: int, year: int) -> WeekData:
-        year, week = str(year), str(week)
+        """Searches the file for a week/year entry, then parses the contents of the week, returning a WeekData object."""
+        year_str, week_str = str(year), str(week)
         with open(self.dbfile_path, mode='r', encoding='utf-8') as infile:
-            while(Parser.parse_next_line(infile) != [year, week]):
+            while(self.parse_next_line(infile) != [year_str, week_str]):
                 pass
-            nr_timesegments, nr_activities = Parser.parse_next_line(infile)
+            nr_timesegments, nr_activities = self.parse_next_line(infile)
             nr_timesegments, nr_activities = int(nr_timesegments), int(nr_activities)
-            activities = Parser.parse_activities(nr_activities, nr_timesegments, infile)
-            timetable = Parser.parse_timetable(nr_timesegments, activities, infile)
-            return WeekData(nr_timesegments, activities, timetable)
+            activities = self.parse_activities(nr_activities, nr_timesegments, infile)
+            timetable = self.parse_timetable(nr_timesegments, activities, infile)
+            return WeekData(nr_timesegments, activities, timetable, week, year)
 
-    @staticmethod
-    def parse_activities(nr_activities: int, infile) -> dict:
+    def parse_activities(self, nr_activities: int, infile) -> dict:
+        """Helper function for parse_week : parses the activities of a week"""
         activities = dict()
         for _ in range(nr_activities):
             try:
-                name, color = Parser.parse_next_line(infile)
+                name, color = self.parse_next_line(infile)
             except ValueError():
                 #PH : Log warning here
                 return
             activities.update({name : Activity(name, color)})
-        Parser.parse_next_line(infile)
+        self.parse_next_line(infile)
         return activities
 
-    @staticmethod
-    def parse_timetable(nr_timesegments: int, activities: int, infile, verify : bool = True) -> list:
+    def parse_timetable(self, nr_timesegments: int, activities: int, infile) -> list:
+        """Helper function for parse_week : parses the timetable of a week"""
         timetable = [[0]*7 for _ in range(nr_timesegments)]
         for i in range(nr_timesegments):
-            row = Parser.parse_next_line(infile)
+            row = self.parse_next_line(infile)
             for j in range(7):
                 timetable[i][j] = Timeslot.from_strings(*row[2*j:2*j+2], activities)
         return timetable
+    
+    def parse_next_line(self) -> list:
+        """Parses the next line from the file loaded in the parser, returning a list of strings split by the delimiter."""
+        line = self.file.readline().replace('\n', '').split(self.delimiter)
+        return line
 
 
 def main():
