@@ -21,6 +21,9 @@ class TwoEight:
         curses.resize_term(self.y, self.x)
         self.draw_frame()
         self.pads = [WeekPad(self.screen, self.y - 2, self.x - 2, 1, 1, WeekData.dummy(48))]
+        self.screen.refresh()
+        for pad in self.pads:
+            pad.refresh()
 
     def input_loop(self):
         while True:
@@ -48,10 +51,13 @@ class Pad:
         self.clipuly, self.clipulx = clipuly, clipulx
         self.pad.clear()
         self.draw_cornerless_frame()
+
     def refresh(self):
         self.pad.refresh(0, 0, self.clipuly, self.clipulx, self.clipuly + self.clipheight - 1, self.clipulx + self.clipwidth - 1)
+
     def subpad(self, padheight, padwidth, paduly, padulx):
         return self.pad.subpad(padheight, padwidth, paduly, padulx)
+
     def draw_cornerless_frame(self):
         # # is a placeholder corner character
         self.screen.addch(self.clipuly - 1, self.clipulx - 1, 35) # #
@@ -86,7 +92,6 @@ class Pad:
                 continue
             painted_char = '─'
             self.screen.addch(*coords, painted_char)
-        self.screen.refresh()
 
 class VertScrollPad(Pad):
     def __init__(self, screen, padheight, padwidth, clipheight, clipwidth, clipuly, clipulx):
@@ -117,9 +122,10 @@ class WeekPad(VertScrollPad):
             if i > self.clipheight + self.scroll:
                 self.scroll += self.clipheight
                 self.refresh()
+        self.scroll = 0
         self.days = 7
         self.selected = [0, 0]
-        self.select()
+        self.pad.addstr(self.selected[0], 5 + self.selected[1] * 6, ">     <")
  
     def select(self):
         self.selected[0] %= self.weekdata.nr_timesegments
