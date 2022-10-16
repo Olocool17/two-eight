@@ -1,5 +1,8 @@
 import curses
 import time
+import locale
+
+locale.setlocale(locale.LC_ALL, '')
 
 class TwoEight:
     def __init__(self):
@@ -17,8 +20,6 @@ class TwoEight:
         self.screen.clear()
         curses.resize_term(self.y, self.x)
         self.draw_frame()
-        self.screen.refresh()
-
         self.pads = [WeekPad(self.screen, self.y - 2, self.x - 2, 1, 1, WeekData.dummy(48))]
 
     def input_loop(self):
@@ -44,18 +45,53 @@ class Pad:
         self.pad = curses.newpad(padheight, padwidth+1)
         self.padheight, self.padwidth = padheight, padwidth
         self.clipheight, self.clipwidth = min(padheight, clipheight), min(padwidth, clipwidth)
-        self.clipuly, self.clipulx = clipuly, clipulx     
+        self.clipuly, self.clipulx = clipuly, clipulx
+        self.pad.clear()
+        self.draw_cornerless_frame()
     def refresh(self):
         self.pad.refresh(0, 0, self.clipuly, self.clipulx, self.clipuly + self.clipheight - 1, self.clipulx + self.clipwidth - 1)
     def subpad(self, padheight, padwidth, paduly, padulx):
         return self.pad.subpad(padheight, padwidth, paduly, padulx)
+    def draw_cornerless_frame(self):
+        # # is a placeholder corner character
+        self.screen.addch(self.clipuly - 1, self.clipulx - 1, 35) # #
+        self.screen.addch(self.clipuly - 1, self.clipulx + self.clipwidth, 35) # #
+        self.screen.addch(self.clipuly + self.clipheight, self.clipulx - 1, 35) # #
+        self.screen.addch(self.clipuly + self.clipheight, self.clipulx + self.clipwidth, 35) # #
+        #left side
+        for y in range(self.clipheight):
+            coords = self.clipuly + y, self.clipulx - 1
+            if self.screen.inch(*coords) & 0xFF == 35:
+                continue
+            painted_char = '│'
+            self.screen.addch(*coords, painted_char)
+        #right side
+        for y in range(self.clipheight):
+            coords = self.clipuly + y, self.clipulx + self.clipwidth
+            if self.screen.inch(*coords) & 0xFF == 35:
+                continue
+            painted_char = '│'
+            self.screen.addch(*coords, painted_char)
+        #top side
+        for x in range(self.clipwidth):
+            coords = self.clipuly - 1, self.clipulx + x
+            if self.screen.inch(*coords) & 0xFF == 35:
+                continue
+            painted_char = '─'
+            self.screen.addch(*coords, painted_char)
+        #bottom side
+        for x in range(self.clipwidth):
+            coords = self.clipuly + self.clipheight, self.clipulx + x
+            if self.screen.inch(*coords) & 0xFF == 35:
+                continueAd
+            painted_char = '─'
+            self.screen.addch(*coords, painted_char)
+        self.screen.refresh()
 
 class VertScrollPad(Pad):
     def __init__(self, screen, padheight, padwidth, clipheight, clipwidth, clipuly, clipulx):
         super().__init__(screen, padheight, padwidth, clipheight, clipwidth, clipuly, clipulx)
         self.scroll = 0
-        self.pad.clear()
-        self.refresh()
         
     def refresh(self):
         self.pad.refresh(self.scroll, 0, self.clipuly, self.clipulx, self.clipuly + self.clipheight - 1, self.clipulx + self.clipwidth - 1)
@@ -82,7 +118,6 @@ class WeekPad(VertScrollPad):
                 self.scroll += self.clipheight
                 self.refresh()
         self.days = 7
-
         self.selected = [0, 0]
         self.select()
  
@@ -90,10 +125,8 @@ class WeekPad(VertScrollPad):
         self.selected[0] %= self.weekdata.nr_timesegments
         self.selected[1] %= self.days
         self.scroll = min(self.padheight - self.clipheight, self.selected[0])
-        self.refresh()
         self.clear_select()
         self.pad.addstr(self.selected[0], 5 + self.selected[1] * 6, ">     <")
-        curses.setsyx(self.selected[0], 5 + self.selected[1] * 6 + 2,)
         self.refresh()
 
     def clear_select(self):
