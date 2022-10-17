@@ -12,8 +12,8 @@ python = "^3.10"
 windows-curses = "^2.3.0"
 
 [tool.poetry.group.dev.dependencies]
-yapf = "^0.32.0"
-windows-curses = "^2.3.0"
+pylint = "^2.15.4"
+black = "^22.10.0"
 
 [build-system]
 requires = ["poetry-core"]
