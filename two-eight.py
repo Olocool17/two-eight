@@ -43,20 +43,18 @@ class TwoEight:
         self.screen.addstr(0, (self.x // 2) - len("two-eight") // 2, "two-eight", curses.A_REVERSE) 
 
 class Pad:
-    def __init__(self, screen, padheight, padwidth, clipheight, clipwidth, clipuly, clipulx):
+    def __init__(self, screen, padheight, padwidth, clipheight, clipwidth, clipuly, clipulx, bordered = False):
         self.screen = screen
         self.pad = curses.newpad(padheight, padwidth+1)
         self.padheight, self.padwidth = padheight, padwidth
         self.clipheight, self.clipwidth = min(padheight, clipheight), min(padwidth, clipwidth)
         self.clipuly, self.clipulx = clipuly, clipulx
         self.pad.clear()
-        self.draw_cornerless_frame()
+        if bordered: self.draw_cornerless_frame()
+
 
     def refresh(self):
         self.pad.refresh(0, 0, self.clipuly, self.clipulx, self.clipuly + self.clipheight - 1, self.clipulx + self.clipwidth - 1)
-
-    def subpad(self, padheight, padwidth, paduly, padulx):
-        return self.pad.subpad(padheight, padwidth, paduly, padulx)
 
     def draw_cornerless_frame(self):
         # # is a placeholder corner character
@@ -94,8 +92,8 @@ class Pad:
             self.screen.addch(*coords, painted_char)
 
 class VertScrollPad(Pad):
-    def __init__(self, screen, padheight, padwidth, clipheight, clipwidth, clipuly, clipulx):
-        super().__init__(screen, padheight, padwidth, clipheight, clipwidth, clipuly, clipulx)
+    def __init__(self, screen, padheight, padwidth, clipheight, clipwidth, clipuly, clipulx, bordered = False):
+        super().__init__(screen, padheight, padwidth, clipheight, clipwidth, clipuly, clipulx, bordered)
         self.scroll = 0
         
     def refresh(self):
@@ -109,24 +107,24 @@ class VertScrollPad(Pad):
         self.scroll = max(self.scroll - scrolldelta, 0)
         self.refresh()
 
-class WeekPad(VertScrollPad):
-    def  __init__(self, screen, clipheight, clipwidth, clipuly, clipulx, weekdata):
+class TimetablePad(VertScrollPad):
+    def __init__(self, screen, padwidth, clipheight, clipwidth, clipuly, clipulx, weekdata):
         self.weekdata = weekdata
-        super().__init__(screen, self.weekdata.nr_timesegments, 48, clipheight, clipwidth, clipuly, clipulx)
+        self.days = 7
+        super().__init__(screen, self.weekdata.nr_timesegments, padwidth, clipheight, clipwidth, clipuly, clipulx)
         if (self.weekdata.nr_timesegments % 24 != 0 and 24 % self.weekdata.nr_timesegments != 0):
             pass
             #PH : Log warning here
-        for i in range(self.weekdata.nr_timesegments):
+        for i in range(0, self.weekdata.nr_timesegments):
             minutes = int(i*(24 / self.weekdata.nr_timesegments)*60)
             self.pad.addstr(i, 0,f"{minutes // 60:02d}:{minutes % 60:02d}", curses.A_DIM)
             if i > self.clipheight + self.scroll:
                 self.scroll += self.clipheight
                 self.refresh()
         self.scroll = 0
-        self.days = 7
         self.selected = [0, 0]
         self.pad.addstr(self.selected[0], 5 + self.selected[1] * 6, ">     <")
- 
+
     def select(self):
         self.selected[0] %= self.weekdata.nr_timesegments
         self.selected[1] %= self.days
@@ -153,9 +151,26 @@ class WeekPad(VertScrollPad):
             return
         self.select()
 
+
+class WeekPad(Pad):
+    def  __init__(self, screen, clipheight, clipwidth, clipuly, clipulx, weekdata):
+        self.weekdata = weekdata
+        super().__init__(screen, self.weekdata.nr_timesegments + 1,  48, clipheight, clipwidth, clipuly, clipulx, bordered = True)
+        self.header_pad = Pad(self.screen, 1, self.padwidth, 1, self.clipwidth, self.clipuly, self.clipulx)
+        self.timetable_pad = TimetablePad(self.screen, self.padwidth, self.clipheight - 1, clipwidth, self.clipuly + 1, self.clipulx, self.weekdata)
+
+    def refresh(self):
+        self.header_pad.refresh()
+        self.timetable_pad.refresh()
+    def input_loop(self, c):
+        self.timetable_pad.input_loop(c)
+
+
+
 class ActivityPad(VertScrollPad):
-    def __init__(self, screen, clipheight, clipwidth, clipuly, clipulx, activtities):
-        pass
+    def __init__(self, screen, clipheight, clipwidth, clipuly, clipulx, activities : dict):
+        self.activities = activities
+        super().__init__(screen, len(self.activities), clipwidth, clipheight, clipwidth, clipuly, clipulx)
 
 class Activity():
     def __init__(self, name: str, color, desc=''):
