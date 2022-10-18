@@ -1,5 +1,5 @@
 import curses
-import time
+import datetime
 import locale
 
 locale.setlocale(locale.LC_ALL, '')
@@ -19,8 +19,8 @@ class TwoEight:
         self.y, self.x = self.screen.getmaxyx()
         self.screen.clear()
         curses.resize_term(self.y, self.x)
-        self.draw_frame()
         self.pads = [WeekPad(self.screen, self.y - 2, self.x - 2, 1, 1, WeekData.dummy(48))]
+        self.draw_frame()
         self.screen.refresh()
         for pad in self.pads:
             pad.refresh()
@@ -122,13 +122,18 @@ class TimetablePad(VertScrollPad):
                 self.scroll += self.clipheight
                 self.refresh()
         self.scroll = 0
+        self.prescroll = self.clipheight // 4
         self.selected = [0, 0]
         self.pad.addstr(self.selected[0], 5 + self.selected[1] * 6, ">     <")
 
     def select(self):
         self.selected[0] %= self.weekdata.nr_timesegments
         self.selected[1] %= self.days
-        self.scroll = min(self.padheight - self.clipheight, self.selected[0])
+        if self.scroll + self.clipheight - self.selected[0] < self.prescroll:
+            self.scroll = self.selected[0] - self.clipheight + self.prescroll
+        elif self.selected[0] - self.scroll < self.prescroll:
+            self.scroll = self.selected[0] - self.prescroll
+        self.scroll = min(self.padheight - self.clipheight, self.scroll)
         self.clear_select()
         self.pad.addstr(self.selected[0], 5 + self.selected[1] * 6, ">     <")
         self.refresh()
@@ -139,13 +144,13 @@ class TimetablePad(VertScrollPad):
                 self.pad.addch(j, 5 + i * 6, ' ')
 
     def input_loop(self, c):
-        if c == ord('i'):
+        if c == ord('w'):
             self.selected[0] -= 1
-        elif c == ord('k'):
+        elif c == ord('s'):
             self.selected[0] += 1
-        elif c == ord('j'):
+        elif c == ord('a'):
             self.selected[1] -= 1
-        elif c == ord('l'):
+        elif c == ord('d'):
             self.selected[1] += 1
         else:
             return
@@ -155,10 +160,22 @@ class TimetablePad(VertScrollPad):
 class WeekPad(Pad):
     def  __init__(self, screen, clipheight, clipwidth, clipuly, clipulx, weekdata):
         self.weekdata = weekdata
-        super().__init__(screen, self.weekdata.nr_timesegments + 1,  48, clipheight, clipwidth, clipuly, clipulx, bordered = True)
-        self.header_pad = Pad(self.screen, 1, self.padwidth, 1, self.clipwidth, self.clipuly, self.clipulx)
-        self.timetable_pad = TimetablePad(self.screen, self.padwidth, self.clipheight - 1, clipwidth, self.clipuly + 1, self.clipulx, self.weekdata)
+        self.header_padheight = 3
+        super().__init__(screen, self.weekdata.nr_timesegments + self.header_padheight,  49, clipheight, clipwidth, clipuly, clipulx, bordered = True)
+        self.header_pad = Pad(self.screen, self.header_padheight, self.padwidth, self.header_padheight, self.clipwidth, self.clipuly, self.clipulx)
+        self.init_headerpad()
+        self.timetable_pad = TimetablePad(self.screen, self.padwidth, self.clipheight - self.header_padheight, clipwidth, self.clipuly + self.header_padheight, self.clipulx, self.weekdata)
 
+    def init_headerpad(self):
+        weekdate = self.weekdata.date
+        month = weekdate.strftime('%b')
+        self.header_pad.pad.addstr(0,5 - len(month), month)
+        year = weekdate.strftime('%Y')
+        self.header_pad.pad.addstr(1,5 - len(year), year)
+        for i in range(7):
+            self.header_pad.pad.addstr(0, 6 + i*6, weekdate.strftime('%d'))
+            self.header_pad.pad.addstr(1, 6 + i*6, weekdate.strftime('%a'))
+            weekdate += datetime.timedelta(days=1)
     def refresh(self):
         self.header_pad.refresh()
         self.timetable_pad.refresh()
@@ -200,12 +217,12 @@ class Timeslot():
         return cls(plan, verify)
 class WeekData():
     """ Backend for week_pad class """
-    def __init__(self, nr_timesegments : int, activities : dict, timetable : list, week : int = 0, year : int = 0):
+    def __init__(self, nr_timesegments : int, activities : dict, timetable : list, week : int = 1, year : int = 1, date : datetime.date = None):
         self.nr_timesegments = nr_timesegments
         self.activities = activities
         self.timetable = timetable
-        self.week = week
-        self.year = year
+        if datetime.date != None: self.date = datetime.date.fromisocalendar(year, week, 1)
+        self.date = date - datetime.timedelta(days=date.weekday())
 
     @staticmethod
     def from_file(parser, week: int, year: int):
@@ -214,7 +231,7 @@ class WeekData():
     def dummy(cls, nr_timesegments):
         """Returns a week_data object with placeholder dummy data"""
         activities ={'dummy' : Activity('dummy', 0), 'dummy_verify' : Activity('dummy_verify', 1)}
-        return cls(nr_timesegments, activities, [[Timeslot.from_strings('dummy', 'dummy_verify', activities) for j in range(7)] for i in range(nr_timesegments)])
+        return cls(nr_timesegments, activities, [[Timeslot.from_strings('dummy', 'dummy_verify', activities) for j in range(7)] for i in range(nr_timesegments)], date = datetime.date(2022,10,31))
 
 class Parser():
     """Manages reading and writing from/to database file"""
