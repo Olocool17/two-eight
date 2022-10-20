@@ -1,8 +1,20 @@
 import curses
 import datetime
 import locale
+import logging
 
 locale.setlocale(locale.LC_ALL, "")
+
+logformat = "[%(asctime)s] %(name)-8s %(levelname)-8s %(message)-s"
+logging.basicConfig(
+    filename="two-eight.log",
+    filemode="w",
+    format=logformat,
+    encoding="utf-8",
+    level=logging.DEBUG,
+)
+log = logging.getLogger()
+log.info("Logger initialised")
 
 
 class TwoEight:
