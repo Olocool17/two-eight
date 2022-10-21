@@ -445,7 +445,7 @@ class Parser:
         elements = line.replace("\n", "").split(self.delimiter)
         if expected_el != 0 and len(elements) != expected_el:
             log.warning(
-                f"Expected {expected_el} elements but parsed {len(elements)} elements in file {self.dbfile_path} line {self.line+1}."
+                f"Expected {expected_el} elements but parsed {len(elements)} elements in file {self.dbfile_path} line {self.line}."
             )
             return None
         return elements
