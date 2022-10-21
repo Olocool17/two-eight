@@ -44,9 +44,7 @@ class TwoEight:
             if c == curses.KEY_RESIZE:
                 self.resize()
             elif c == 3:  # Crtl + C
-                self.screen.clear()
-                self.screen.refresh()
-                raise KeyboardInterrupt()
+                self.exit()
             else:
                 for pad in self.pads:
                     pad.input_loop(c)
@@ -56,6 +54,9 @@ class TwoEight:
         self.screen.addstr(
             0, (self.x // 2) - len("two-eight") // 2, "two-eight", curses.A_REVERSE
         )
+
+    def exit(self):
+        raise CleanExit
 
 
 class Pad:
@@ -459,9 +460,16 @@ class Parser:
         self.line = 0
 
 
+class CleanExit(Exception):
+    pass
+
+
 def main(stdscr):
     TwoEight(stdscr)
 
 
 if __name__ == "__main__":
-    curses.wrapper(main)
+    try:
+        curses.wrapper(main)
+    except CleanExit:
+        exit()
