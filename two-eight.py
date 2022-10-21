@@ -56,6 +56,8 @@ class TwoEight:
         )
 
     def exit(self):
+        self.screen.clear()
+        self.screen.refresh()
         raise CleanExit
 
 
