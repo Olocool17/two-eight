@@ -382,60 +382,81 @@ class WeekData:
 
 
 class Parser:
-    """Manages reading and writing from/to database file"""
+    """Manages reading and writing from/to a database file"""
 
     delimiter = "\t"
 
     def __init__(self, dbfile_path="data.te"):
-        # Check if filepath is valid
-        try:
-            file = open(dbfile_path, mode="r", encoding="utf-8")
-            file.close()
-        except FileNotFoundError:
-            return
-            # PH : Log warning here
         self.dbfile_path = dbfile_path
+        try:
+            self.file = open(self.dbfile_path, mode="r", encoding="utf-8")
+        except FileNotFoundError as e:
+            log.warning(
+                f'Could not find file with relative filepath "{self.dbfile_path}", original error: %s',
+                exc_info=e,
+            )
+        self.line = 0
+
+    def __del__(self):
+        self.file.close()
 
     def parse_week(self, week: int, year: int) -> WeekData:
         """Searches the file for a week/year entry, then parses the contents of the week, returning a WeekData object."""
-        year_str, week_str = str(year), str(week)
-        with open(self.dbfile_path, mode="r", encoding="utf-8") as infile:
-            while self.parse_next_line(infile) != [year_str, week_str]:
-                pass
-            nr_timesegments, nr_activities = self.parse_next_line(infile)
-            nr_timesegments, nr_activities = int(nr_timesegments), int(nr_activities)
-            activities = self.parse_activities(nr_activities, infile)
-            timetable = self.parse_timetable(nr_timesegments, activities, infile)
-            return WeekData(nr_timesegments, activities, timetable, week, year)
+        self.seek_for(str(year), str(week))
+        nr_timesegments, nr_activities = self.parse_next_line(2)
+        nr_timesegments, nr_activities = int(nr_timesegments), int(nr_activities)
+        activities = self.parse_activities(nr_activities)
+        timetable = self.parse_timetable(nr_timesegments, activities)
+        self.reset_seek()
+        return WeekData(nr_timesegments, activities, timetable, week, year)
 
-    def parse_activities(self, nr_activities: int, infile) -> dict:
+    def parse_activities(self, nr_activities: int) -> dict:
         """Helper function for parse_week : parses the activities of a week"""
         activities = dict()
         for _ in range(nr_activities):
-            try:
-                name, color = self.parse_next_line(infile)
-            except ValueError():
-                # PH : Log warning here
-                return
+            name, color = self.parse_next_line(2)
             activities.update({name: Activity(name, color)})
-        self.parse_next_line(infile)
+        self.parse_next_line()
         return activities
 
-    def parse_timetable(self, nr_timesegments: int, activities: dict, infile) -> list:
+    def parse_timetable(self, nr_timesegments: int, activities: dict) -> list:
         """Helper function for parse_week : parses the timetable of a week"""
         timetable = [[0] * 7 for _ in range(nr_timesegments)]
         for i in range(nr_timesegments):
-            row = self.parse_next_line(infile)
+            row = self.parse_next_line(14)
             for j in range(7):
                 timetable[i][j] = Timeslot.from_strings(
                     *row[2 * j : 2 * j + 2], activities
                 )
         return timetable
 
-    def parse_next_line(self, file) -> list:
+    def parse_next_line(self, expected_el: int = 0) -> list:
         """Parses the next line from the file, returning a list of strings split by the delimiter."""
-        line = file.readline().replace("\n", "").split(self.delimiter)
-        return line
+        line = self.file.readline()
+        if line == "":
+            log.info(
+                f"End of file reached in file {self.dbfile_path} line {self.line+1}"
+            )
+            return None
+        self.line += 1
+        elements = line.replace("\n", "").split(self.delimiter)
+        if expected_el != 0 and len(elements) != expected_el:
+            log.warning(
+                f"Expected {expected_el} elements but parsed {len(elements)} elements in file {self.dbfile_path} line {self.line+1}."
+            )
+            return None
+        return elements
+
+    def seek_for(self, *args):
+        """Seeks to a set of specific elements in a file"""
+        el = self.parse_next_line()
+        while el != None and el != args:
+            pass
+
+    def reset_seek(self):
+        """Resets file seeker to the beginning of the file"""
+        self.file.seek(0, 0)
+        self.line = 0
 
 
 def main(stdscr):
