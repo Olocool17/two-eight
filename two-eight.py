@@ -413,13 +413,14 @@ class Parser:
         if self.file != None:
             self.file.close()
 
-    def ensure_open(self, func):
+    @staticmethod
+    def ensure_open(func):
         """Ensures the database file is loaded into the parser"""
 
-        def decorated(*args, **kwargs):
+        def decorated(self, *args, **kwargs):
             if self.file == None:
                 self.open()
-            return func(*args, **kwargs)
+            return func(self, *args, **kwargs)
 
         return decorated
 
