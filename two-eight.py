@@ -391,6 +391,14 @@ class Parser:
 
     def __init__(self, dbfile_path="data.te"):
         self.dbfile_path = dbfile_path
+        self.file = None
+        self.open()
+
+    def __del__(self):
+        self.file.close()
+
+    def open(self):
+        """Tries to load the database file"""
         try:
             self.file = open(self.dbfile_path, mode="r", encoding="utf-8")
         except FileNotFoundError as e:
@@ -400,11 +408,24 @@ class Parser:
             )
         self.line = 0
 
-    def __del__(self):
-        self.file.close()
+    def close(self):
+        """Closes the database file"""
+        if self.file != None:
+            self.file.close()
 
+    def ensure_open(self, func):
+        """Ensures the database file is loaded into the parser"""
+
+        def decorated(*args, **kwargs):
+            if self.file == None:
+                self.open()
+            return func(*args, **kwargs)
+
+        return decorated
+
+    @ensure_open
     def parse_week(self, week: int, year: int) -> WeekData:
-        """Searches the file for a week/year entry, then parses the contents of the week, returning a WeekData object."""
+        """Searches the file for a week/year entry, then parses the contents of the week, returning a WeekData object"""
         self.seek_for(str(year), str(week))
         nr_timesegments, nr_activities = self.parse_next_line(2)
         nr_timesegments, nr_activities = int(nr_timesegments), int(nr_activities)
