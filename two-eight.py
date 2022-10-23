@@ -219,22 +219,26 @@ class TimetablePad(VertScrollPad):
         self.refresh()
 
     def clear_select(self):
-        for i in range(self.days + 1):
-            for j in range(self.weekdata.nr_timesegments):
-                self.pad.addch(j, 5 + i * 6, " ")
+        self.pad.addch(self.selected[0], 5 + self.selected[1] * 6, " ")
+        self.pad.addch(self.selected[0], 11 + self.selected[1] * 6, " ")
 
     def input_loop(self, c):
         if c == ord("w"):
+            self.clear_select()
             self.selected[0] -= 1
+            self.select()
         elif c == ord("s"):
+            self.clear_select()
             self.selected[0] += 1
+            self.select()
         elif c == ord("a"):
+            self.clear_select()
             self.selected[1] -= 1
+            self.select()
         elif c == ord("d"):
+            self.clear_select()
             self.selected[1] += 1
-        else:
-            return
-        self.select()
+            self.select()
 
 
 class WeekHeaderPad(Pad):
