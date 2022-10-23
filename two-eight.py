@@ -74,6 +74,9 @@ class Pad:
         self.clipwidth = self.clipbrx - self.clipulx + 1
         self.pad.clear()
 
+    def draw_static(self):
+        pass
+
     def refresh(self):
         self.pad.refresh(
             0,
@@ -111,6 +114,7 @@ class Frame:
         pad.clipulx += self.uly + 1
         pad.clipbrx += self.uly + 1
         self.pads.append(pad)
+        pad.draw_static()
 
     def draw_cornerless_frame(self):
         # # is a placeholder corner character
@@ -157,7 +161,12 @@ class VertScrollPad(Pad):
 
     def refresh(self):
         self.pad.refresh(
-            self.scroll, 0, self.clipuly, self.clipulx, self.clipbry, self.clipbrx
+            self.scroll,
+            0,
+            self.clipuly,
+            self.clipulx,
+            min(self.clipbry, self.clipuly + self.padheight - 1),
+            self.clipbrx,
         )
 
 
@@ -178,7 +187,7 @@ class TimetablePad(VertScrollPad):
         self.prescroll = self.clipheight // 4
         self.selected = [0, 0]
 
-    def _init_timetablepad(self):
+    def draw_static(self):
         if (
             self.weekdata.nr_timesegments % 24 != 0
             and 24 % self.weekdata.nr_timesegments != 0
@@ -204,7 +213,7 @@ class TimetablePad(VertScrollPad):
             self.scroll = select_scroll_delta_upper
         elif select_scroll_delta_lower < self.scroll:
             self.scroll = select_scroll_delta_lower
-        self.scroll = min(self.padheight - self.clipheight, max(0, self.scroll))
+        self.scroll = max(0, min(self.padheight - self.clipheight, self.scroll))
         self.clear_select()
         self.pad.addstr(self.selected[0], 5 + self.selected[1] * 6, ">     <")
         self.refresh()
@@ -228,10 +237,26 @@ class TimetablePad(VertScrollPad):
         self.select()
 
 
+class WeekHeaderPad(Pad):
+    def __init__(self, screen, padwidth, clipuly, clipulx, clipbrx, weekdata):
+        super().__init__(screen, 3, padwidth, clipuly, clipulx, clipuly + 2, clipbrx)
+        self.weekdata = weekdata
+
+    def draw_static(self):
+        weekdate = self.weekdata.date
+        month = weekdate.strftime("%b")
+        self.pad.addstr(0, 5 - len(month), month)
+        year = weekdate.strftime("%Y")
+        self.pad.addstr(1, 5 - len(year), year)
+        for i in range(7):
+            self.pad.addstr(0, 6 + i * 6, weekdate.strftime("%d"))
+            self.pad.addstr(1, 6 + i * 6, weekdate.strftime("%a"))
+            weekdate += datetime.timedelta(days=1)
+
+
 class WeekFrame(Frame):
     def __init__(self, screen, uly, ulx, bry, brx, weekdata):
         self.weekdata = weekdata
-        self.header_padheight = 3
         super().__init__(
             screen,
             uly,
@@ -239,42 +264,28 @@ class WeekFrame(Frame):
             bry,
             brx,
         )
-        self.header_pad = Pad(
+        self.header = WeekHeaderPad(
             self.screen,
-            self.header_padheight,
             self.width,
             0,
             0,
-            self.header_padheight - 1,
             self.width - 1,
+            weekdata,
         )
-        self.init_headerpad()
-        self.add_pad(self.header_pad)
-        self.timetable_pad = TimetablePad(
+        self.add_pad(self.header)
+        self.timetable = TimetablePad(
             self.screen,
             self.width,
-            self.header_padheight,
+            self.header.clipheight,
             0,
             self.height - 1,
             self.width - 1,
             self.weekdata,
         )
-        self.add_pad(self.timetable_pad)
-        self.timetable_pad._init_timetablepad()
-
-    def init_headerpad(self):
-        weekdate = self.weekdata.date
-        month = weekdate.strftime("%b")
-        self.header_pad.pad.addstr(0, 5 - len(month), month)
-        year = weekdate.strftime("%Y")
-        self.header_pad.pad.addstr(1, 5 - len(year), year)
-        for i in range(7):
-            self.header_pad.pad.addstr(0, 6 + i * 6, weekdate.strftime("%d"))
-            self.header_pad.pad.addstr(1, 6 + i * 6, weekdate.strftime("%a"))
-            weekdate += datetime.timedelta(days=1)
+        self.add_pad(self.timetable)
 
     def input_loop(self, c):
-        self.timetable_pad.input_loop(c)
+        self.timetable.input_loop(c)
 
 
 class ActivityPad(VertScrollPad):
