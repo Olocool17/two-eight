@@ -91,8 +91,8 @@ class Frame:
         self.pads = []
         self.uly, self.ulx = uly, ulx
         self.bry, self.brx = bry, brx
-        self.height = self.bry - self.uly + 1  # amount of rows
-        self.width = self.brx - self.ulx + 1  # amount of columns
+        self.height = self.bry - self.uly - 1  # amount of enclosed rows
+        self.width = self.brx - self.ulx - 1  # amount of enclosed columns
         self.draw_cornerless_frame()
 
     def refresh(self):
@@ -105,6 +105,7 @@ class Frame:
             log.warning(
                 f"Could not add pad with relative right corner ({pad.clipbry, pad.clipbrx}) to frame with height {self.height} and width {self.width}"
             )
+            return
         pad.clipuly += self.uly + 1
         pad.clipbry += self.uly + 1
         pad.clipulx += self.uly + 1
@@ -118,28 +119,28 @@ class Frame:
         self.screen.addch(self.bry, self.ulx, 35)  # #
         self.screen.addch(self.bry, self.brx, 35)  # #
         # left side
-        for y in range(1, self.height - 1):
+        for y in range(1, self.height + 1):
             coords = self.uly + y, self.ulx
             if self.screen.inch(*coords) & 0xFF == 35:
                 continue
             painted_char = "│"
             self.screen.addch(*coords, painted_char)
         # right side
-        for y in range(1, self.height - 1):
+        for y in range(1, self.height + 1):
             coords = self.uly + y, self.brx
             if self.screen.inch(*coords) & 0xFF == 35:
                 continue
             painted_char = "│"
             self.screen.addch(*coords, painted_char)
         # top side
-        for x in range(1, self.width - 1):
+        for x in range(1, self.width + 1):
             coords = self.uly, self.ulx + x
             if self.screen.inch(*coords) & 0xFF == 35:
                 continue
             painted_char = "─"
             self.screen.addch(*coords, painted_char)
         # bottom side
-        for x in range(1, self.width - 1):
+        for x in range(1, self.width + 1):
             coords = self.bry, self.ulx + x
             if self.screen.inch(*coords) & 0xFF == 35:
                 continue
@@ -241,21 +242,21 @@ class WeekFrame(Frame):
         self.header_pad = Pad(
             self.screen,
             self.header_padheight,
-            self.width - 2,
+            self.width,
             0,
             0,
             self.header_padheight - 1,
-            self.width - 3,
+            self.width - 1,
         )
         self.init_headerpad()
         self.add_pad(self.header_pad)
         self.timetable_pad = TimetablePad(
             self.screen,
-            self.width - 2,
+            self.width,
             self.header_padheight,
             0,
-            self.height - 3,
-            self.width - 3,
+            self.height - 1,
+            self.width - 1,
             self.weekdata,
         )
         self.add_pad(self.timetable_pad)
