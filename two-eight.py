@@ -30,13 +30,15 @@ class TwoEight:
         self.y, self.x = self.screen.getmaxyx()
         self.screen.clear()
         curses.resize_term(self.y, self.x)
-        self.pads = [
-            WeekPad(self.screen, self.y - 2, self.x - 2, 1, 1, WeekData.dummy(48))
+        self.frames = [
+            WeekFrame(
+                self.screen, 0, 0, self.y - 1, min(self.x - 1, 50), WeekData.dummy(48)
+            )
         ]
         self.draw_frame()
         self.screen.refresh()
-        for pad in self.pads:
-            pad.refresh()
+        for frame in self.frames:
+            frame.refresh()
 
     def input_loop(self):
         while True:
@@ -46,8 +48,8 @@ class TwoEight:
             elif c == 3:  # Crtl + C
                 self.exit()
             else:
-                for pad in self.pads:
-                    pad.input_loop(c)
+                for frame in self.frames:
+                    frame.input_loop(c)
 
     def draw_frame(self):
         self.screen.border(0, 0, 0, 0, 0, 0, 0, 0)
@@ -62,27 +64,15 @@ class TwoEight:
 
 
 class Pad:
-    def __init__(
-        self,
-        screen,
-        padheight,
-        padwidth,
-        clipheight,
-        clipwidth,
-        clipuly,
-        clipulx,
-        bordered=False,
-    ):
+    def __init__(self, screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx):
         self.screen = screen
-        self.pad = curses.newpad(padheight, padwidth + 1)
+        self.pad = curses.newpad(padheight, padwidth)
         self.padheight, self.padwidth = padheight, padwidth
-        self.clipheight, self.clipwidth = min(padheight, clipheight), min(
-            padwidth, clipwidth
-        )
         self.clipuly, self.clipulx = clipuly, clipulx
+        self.clipbry, self.clipbrx = clipbry, clipbrx
+        self.clipheight = self.clipbry - self.clipuly + 1
+        self.clipwidth = self.clipbrx - self.clipulx + 1
         self.pad.clear()
-        if bordered:
-            self.draw_cornerless_frame()
 
     def refresh(self):
         self.pad.refresh(
@@ -90,42 +80,67 @@ class Pad:
             0,
             self.clipuly,
             self.clipulx,
-            self.clipuly + self.clipheight - 1,
-            self.clipulx + self.clipwidth - 1,
+            self.clipbry,
+            self.clipbrx,
         )
+
+
+class Frame:
+    def __init__(self, screen, uly, ulx, bry, brx):
+        self.screen = screen
+        self.pads = []
+        self.uly, self.ulx = uly, ulx
+        self.bry, self.brx = bry, brx
+        self.height = self.bry - self.uly + 1  # amount of rows
+        self.width = self.brx - self.ulx + 1  # amount of columns
+        self.draw_cornerless_frame()
+
+    def refresh(self):
+        for pad in self.pads:
+            pad.refresh()
+
+    def add_pad(self, pad: Pad):
+        """Adds a pad to this frame, interpreting its 'clip' coordinates as relative to the frame"""
+        if pad.clipbry >= self.height or pad.clipbrx >= self.width:
+            log.warning(
+                f"Could not add pad with relative right corner ({pad.clipbry, pad.clipbrx}) to frame with height {self.height} and width {self.width}"
+            )
+        pad.clipuly += self.uly + 1
+        pad.clipbry += self.uly + 1
+        pad.clipulx += self.uly + 1
+        pad.clipbrx += self.uly + 1
+        self.pads.append(pad)
 
     def draw_cornerless_frame(self):
         # # is a placeholder corner character
-        self.screen.addch(self.clipuly - 1, self.clipulx - 1, 35)  # #
-        self.screen.addch(self.clipuly - 1, self.clipulx + self.clipwidth, 35)  # #
-        self.screen.addch(self.clipuly + self.clipheight, self.clipulx - 1, 35)  # #
-        self.screen.addch(
-            self.clipuly + self.clipheight, self.clipulx + self.clipwidth, 35
-        )  # #
+        self.screen.addch(self.uly, self.ulx, 35)  # #
+        self.screen.addch(self.uly, self.brx, 35)  # #
+        self.screen.addch(self.bry, self.ulx, 35)  # #
+        self.screen.addch(self.bry, self.brx, 35)  # #
         # left side
-        for y in range(self.clipheight):
-            coords = self.clipuly + y, self.clipulx - 1
+        for y in range(1, self.height - 1):
+            coords = self.uly + y, self.ulx
             if self.screen.inch(*coords) & 0xFF == 35:
                 continue
             painted_char = "│"
             self.screen.addch(*coords, painted_char)
         # right side
-        for y in range(self.clipheight):
-            coords = self.clipuly + y, self.clipulx + self.clipwidth
+        for y in range(1, self.height - 1):
+            coords = self.uly + y, self.brx
             if self.screen.inch(*coords) & 0xFF == 35:
                 continue
             painted_char = "│"
             self.screen.addch(*coords, painted_char)
         # top side
-        for x in range(self.clipwidth):
-            coords = self.clipuly - 1, self.clipulx + x
+        for x in range(1, self.width - 1):
+            coords = self.uly, self.ulx + x
             if self.screen.inch(*coords) & 0xFF == 35:
                 continue
             painted_char = "─"
             self.screen.addch(*coords, painted_char)
         # bottom side
-        for x in range(self.clipwidth):
-            coords = self.clipuly + self.clipheight, self.clipulx + x
+        for x in range(1, self.width - 1):
+            coords = self.bry, self.ulx + x
             if self.screen.inch(*coords) & 0xFF == 35:
                 continue
             painted_char = "─"
@@ -133,63 +148,36 @@ class Pad:
 
 
 class VertScrollPad(Pad):
-    def __init__(
-        self,
-        screen,
-        padheight,
-        padwidth,
-        clipheight,
-        clipwidth,
-        clipuly,
-        clipulx,
-        bordered=False,
-    ):
+    def __init__(self, screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx):
         super().__init__(
-            screen,
-            padheight,
-            padwidth,
-            clipheight,
-            clipwidth,
-            clipuly,
-            clipulx,
-            bordered,
+            screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx
         )
         self.scroll = 0
 
     def refresh(self):
         self.pad.refresh(
-            self.scroll,
-            0,
-            self.clipuly,
-            self.clipulx,
-            self.clipuly + self.clipheight - 1,
-            self.clipulx + self.clipwidth - 1,
+            self.scroll, 0, self.clipuly, self.clipulx, self.clipbry, self.clipbrx
         )
-
-    def scroll_down(self, scrolldelta=4):
-        self.scroll = min(self.scroll + scrolldelta, self.padheight - self.clipheight)
-        self.refresh()
-
-    def scroll_up(self, scrolldelta=4):
-        self.scroll = max(self.scroll - scrolldelta, 0)
-        self.refresh()
 
 
 class TimetablePad(VertScrollPad):
-    def __init__(
-        self, screen, padwidth, clipheight, clipwidth, clipuly, clipulx, weekdata
-    ):
+    def __init__(self, screen, padwidth, clipuly, clipulx, clipbry, clipbrx, weekdata):
         self.weekdata = weekdata
         self.days = 7
         super().__init__(
             screen,
             self.weekdata.nr_timesegments,
             padwidth,
-            clipheight,
-            clipwidth,
             clipuly,
             clipulx,
+            clipbry,
+            clipbrx,
         )
+        self.scroll = 0
+        self.prescroll = self.clipheight // 4
+        self.selected = [0, 0]
+
+    def _init_timetablepad(self):
         if (
             self.weekdata.nr_timesegments % 24 != 0
             and 24 % self.weekdata.nr_timesegments != 0
@@ -204,10 +192,7 @@ class TimetablePad(VertScrollPad):
             if i > self.clipheight + self.scroll:
                 self.scroll += self.clipheight
                 self.refresh()
-        self.scroll = 0
-        self.prescroll = self.clipheight // 4
-        self.selected = [0, 0]
-        self.pad.addstr(self.selected[0], 5 + self.selected[1] * 6, ">     <")
+        self.select()
 
     def select(self):
         self.selected[0] %= self.weekdata.nr_timesegments
@@ -242,39 +227,39 @@ class TimetablePad(VertScrollPad):
         self.select()
 
 
-class WeekPad(Pad):
-    def __init__(self, screen, clipheight, clipwidth, clipuly, clipulx, weekdata):
+class WeekFrame(Frame):
+    def __init__(self, screen, uly, ulx, bry, brx, weekdata):
         self.weekdata = weekdata
         self.header_padheight = 3
         super().__init__(
             screen,
-            self.weekdata.nr_timesegments + self.header_padheight,
-            49,
-            clipheight,
-            clipwidth,
-            clipuly,
-            clipulx,
-            bordered=True,
+            uly,
+            ulx,
+            bry,
+            brx,
         )
         self.header_pad = Pad(
             self.screen,
             self.header_padheight,
-            self.padwidth,
-            self.header_padheight,
-            self.clipwidth,
-            self.clipuly,
-            self.clipulx,
+            self.width - 2,
+            0,
+            0,
+            self.header_padheight - 1,
+            self.width - 3,
         )
         self.init_headerpad()
+        self.add_pad(self.header_pad)
         self.timetable_pad = TimetablePad(
             self.screen,
-            self.padwidth,
-            self.clipheight - self.header_padheight,
-            clipwidth,
-            self.clipuly + self.header_padheight,
-            self.clipulx,
+            self.width - 2,
+            self.header_padheight,
+            0,
+            self.height - 3,
+            self.width - 3,
             self.weekdata,
         )
+        self.add_pad(self.timetable_pad)
+        self.timetable_pad._init_timetablepad()
 
     def init_headerpad(self):
         weekdate = self.weekdata.date
@@ -286,10 +271,6 @@ class WeekPad(Pad):
             self.header_pad.pad.addstr(0, 6 + i * 6, weekdate.strftime("%d"))
             self.header_pad.pad.addstr(1, 6 + i * 6, weekdate.strftime("%a"))
             weekdate += datetime.timedelta(days=1)
-
-    def refresh(self):
-        self.header_pad.refresh()
-        self.timetable_pad.refresh()
 
     def input_loop(self, c):
         self.timetable_pad.input_loop(c)
