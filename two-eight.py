@@ -214,7 +214,6 @@ class TimetablePad(VertScrollPad):
         elif select_scroll_delta_lower < self.scroll:
             self.scroll = select_scroll_delta_lower
         self.scroll = max(0, min(self.padheight - self.clipheight, self.scroll))
-        self.clear_select()
         self.pad.addstr(self.selected[0], 5 + self.selected[1] * 6, ">     <")
         self.refresh()
 
