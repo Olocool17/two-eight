@@ -1,3 +1,4 @@
+from calendar import week
 import curses
 import datetime
 import locale
@@ -157,17 +158,27 @@ class VertScrollPad(Pad):
         super().__init__(
             screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx
         )
-        self.scroll = 0
+        self.scrollpos = 0
+        self.prescroll = self.clipheight // 4
 
     def refresh(self):
         self.pad.refresh(
-            self.scroll,
+            self.scrollpos,
             0,
             self.clipuly,
             self.clipulx,
             min(self.clipbry, self.clipuly + self.padheight - 1),
             self.clipbrx,
         )
+
+    def scroll(self, select):
+        select_scroll_delta_lower = select - self.prescroll
+        select_scroll_delta_upper = select - self.clipheight + self.prescroll
+        if select_scroll_delta_upper > self.scrollpos:
+            self.scrollpos = select_scroll_delta_upper
+        elif select_scroll_delta_lower < self.scrollpos:
+            self.scrollpos = select_scroll_delta_lower
+        self.scrollpos = max(0, min(self.padheight - self.clipheight, self.scrollpos))
 
 
 class TimetablePad(VertScrollPad):
@@ -183,8 +194,6 @@ class TimetablePad(VertScrollPad):
             clipbry,
             clipbrx,
         )
-        self.scroll = 0
-        self.prescroll = self.clipheight // 4
         self.selected = [0, 0]
 
     def draw_static(self):
@@ -199,21 +208,16 @@ class TimetablePad(VertScrollPad):
             self.pad.addstr(
                 i, 0, f"{minutes // 60:02d}:{minutes % 60:02d}", curses.A_DIM
             )
-            if i > self.clipheight + self.scroll:
-                self.scroll += self.clipheight
+            if i > self.clipheight + self.scrollpos:
+                self.scrollpos += self.clipheight
                 self.refresh()
+        self.scrollpos = 0
         self.select()
 
     def select(self):
-        self.selected[0] %= self.weekdata.nr_timesegments
+        self.selected[0] %= self.padheight
         self.selected[1] %= self.days
-        select_scroll_delta_lower = self.selected[0] - self.prescroll
-        select_scroll_delta_upper = self.selected[0] - self.clipheight + self.prescroll
-        if select_scroll_delta_upper > self.scroll:
-            self.scroll = select_scroll_delta_upper
-        elif select_scroll_delta_lower < self.scroll:
-            self.scroll = select_scroll_delta_lower
-        self.scroll = max(0, min(self.padheight - self.clipheight, self.scroll))
+        self.scroll(self.selected[0])
         self.pad.addstr(self.selected[0], 5 + self.selected[1] * 6, ">     <")
         self.refresh()
 
@@ -291,20 +295,16 @@ class WeekFrame(Frame):
         self.timetable.input_loop(c)
 
 
-class ActivityPad(VertScrollPad):
-    def __init__(
-        self, screen, clipheight, clipwidth, clipuly, clipulx, activities: dict
-    ):
-        self.activities = activities
-        super().__init__(
-            screen,
-            len(self.activities),
-            clipwidth,
-            clipheight,
-            clipwidth,
-            clipuly,
-            clipulx,
-        )
+class ActivityTablePad(VertScrollPad):
+    def __init__(self):
+        pass
+
+
+class ActivityFrame(Frame):
+    def __init__(self, screen, uly, ulx, bry, brx, weekdata):
+        self.weekdata = weekdata
+        super().__init__(screen, uly, ulx, bry, brx)
+        self.activitytable = ActivityTablePad()
 
 
 class Activity:
