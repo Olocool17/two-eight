@@ -194,7 +194,9 @@ class TimetablePad(VertScrollPad):
             clipbry,
             clipbrx,
         )
-        self.selected = [0, 0]
+        self.selected = [(0, 0)]  # list of selected timeslots by indices
+        self.cursor_x, self.cursor_y = 0, 0
+        self.hold_cursor_x, self.hold_cursor_y = 0, 0
 
     def draw_static(self):
         if (
@@ -214,34 +216,50 @@ class TimetablePad(VertScrollPad):
         self.scrollpos = 0
         self.select()
 
-    def select(self):
-        self.selected[0] %= self.padheight
-        self.selected[1] %= self.days
-        self.scroll(self.selected[0])
-        self.pad.addstr(self.selected[0], 5 + self.selected[1] * 6, ">     <")
+    def select(self, individ=True):
+        self.cursor_y %= self.padheight
+        self.cursor_x %= self.days
+        self.scroll(self.cursor_y)
+        self.clear_select()
+        if individ:
+            self.hold_cursor_y, self.hold_cursor_x = self.cursor_y, self.cursor_x
+            self.selected = [(self.cursor_y, self.cursor_x)]
+        else:
+            self.selected = [
+                (y, x)
+                for y in range(
+                    min(self.cursor_y, self.hold_cursor_y),
+                    max(self.cursor_y, self.hold_cursor_y) + 1,
+                )
+                for x in range(
+                    min(self.cursor_x, self.hold_cursor_x),
+                    max(self.cursor_x, self.hold_cursor_x) + 1,
+                )
+            ]
+
+        for y, x in self.selected:
+            self.pad.addstr(y, 5 + x * 6, ">     <")
+
         self.refresh()
 
     def clear_select(self):
-        self.pad.addch(self.selected[0], 5 + self.selected[1] * 6, " ")
-        self.pad.addch(self.selected[0], 11 + self.selected[1] * 6, " ")
+        for y, x in self.selected:
+            self.pad.addch(y, 5 + x * 6, " ")
+            self.pad.addch(y, 11 + x * 6, " ")
 
     def input_loop(self, c):
-        if c == ord("w"):
-            self.clear_select()
-            self.selected[0] -= 1
-            self.select()
-        elif c == ord("s"):
-            self.clear_select()
-            self.selected[0] += 1
-            self.select()
-        elif c == ord("a"):
-            self.clear_select()
-            self.selected[1] -= 1
-            self.select()
-        elif c == ord("d"):
-            self.clear_select()
-            self.selected[1] += 1
-            self.select()
+        if c == ord("w") or c == ord("W"):
+            self.cursor_y -= 1
+            self.select(individ=bool(c - ord("W")))
+        elif c == ord("s") or c == ord("S"):
+            self.cursor_y += 1
+            self.select(individ=bool(c - ord("S")))
+        elif c == ord("a") or c == ord("A"):
+            self.cursor_x -= 1
+            self.select(individ=bool(c - ord("A")))
+        elif c == ord("d") or c == ord("D"):
+            self.cursor_x += 1
+            self.select(individ=bool(c - ord("D")))
 
 
 class WeekHeaderPad(Pad):
