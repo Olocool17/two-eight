@@ -24,6 +24,15 @@ class TwoEight:
         curses.use_default_colors()
         curses.curs_set(0)
         self.screen.leaveok(False)
+
+        log.info(f"Terminal has color support: {curses.has_colors()}")
+        log.info(
+            f"Terminal has extended color support: {curses.has_extended_color_support()}"
+        )
+        log.info(f"Terminal can change colors: {curses.can_change_color()}")
+        log.info(f"Amount of terminal colors: {curses.COLORS}")
+        log.info(f"Amount of terminal color pairs: {curses.COLOR_PAIRS}")
+
         self.resize()
         self.input_loop()
 
@@ -426,7 +435,7 @@ class Parser:
         """Closes the database file"""
         if self.file != None:
             self.file.close()
-
+            
     @staticmethod
     def ensure_open(func):
         """Ensures the database file is loaded into the parser"""
