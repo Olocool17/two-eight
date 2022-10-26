@@ -203,6 +203,8 @@ class TimetablePad(VertScrollPad):
             clipbry,
             clipbrx,
         )
+        self.timewidth = 5
+        self.slotwidth = 5
         self.selected = [(0, 0)]  # list of selected timeslots by indices
         self.cursor_x, self.cursor_y = 0, 0
         self.hold_cursor_x, self.hold_cursor_y = 0, 0
@@ -224,6 +226,15 @@ class TimetablePad(VertScrollPad):
                 self.refresh()
         self.scrollpos = 0
         self.select()
+        for x in range(self.days):
+            for y in range(self.padheight):
+                self.update_timeslot(y, x)
+
+    def update_timeslot(self, y, x):
+        """Updates a timeslot by its y/x index"""
+        self.pad.addstr(
+            y, self.timewidth + self.slotwidth // 2 + 1 + (self.slotwidth + 1) * x, "x"
+        )
 
     def select(self, individ=True):
         self.cursor_y %= self.padheight
@@ -247,8 +258,8 @@ class TimetablePad(VertScrollPad):
             ]
 
         for y, x in self.selected:
-            self.pad.addstr(y, 5 + x * 6, ">     <")
-
+            self.pad.addch(y, self.timewidth + x * 6, ">")
+            self.pad.addch(y, self.timewidth + x * 6 + self.slotwidth + 1, "<")
         self.refresh()
 
     def clear_select(self):
@@ -435,7 +446,7 @@ class Parser:
         """Closes the database file"""
         if self.file != None:
             self.file.close()
-            
+
     @staticmethod
     def ensure_open(func):
         """Ensures the database file is loaded into the parser"""
