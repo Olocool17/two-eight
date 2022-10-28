@@ -33,6 +33,7 @@ class TwoEight:
         log.info(f"Amount of terminal colors: {curses.COLORS}")
         log.info(f"Amount of terminal color pairs: {curses.COLOR_PAIRS}")
 
+        self.weekdata = WeekData.dummy(48)
         self.resize()
         self.input_loop()
 
@@ -40,9 +41,12 @@ class TwoEight:
         self.y, self.x = self.screen.getmaxyx()
         self.screen.clear()
         curses.resize_term(self.y, self.x)
+        self.refresh()
+
+    def refresh(self):
         self.frames = [
             TimetableFrame(
-                self.screen, 0, 0, self.y - 1, min(self.x - 1, 50), WeekData.dummy(48)
+                self.screen, 0, 0, self.y - 1, min(self.x - 1, 50), self.weekdata
             )
         ]
         self.draw_frame()
