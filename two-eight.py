@@ -24,15 +24,6 @@ class TwoEight:
         curses.use_default_colors()
         curses.curs_set(0)
         self.screen.leaveok(False)
-
-        log.info(f"Terminal has color support: {curses.has_colors()}")
-        log.info(
-            f"Terminal has extended color support: {curses.has_extended_color_support()}"
-        )
-        log.info(f"Terminal can change colors: {curses.can_change_color()}")
-        log.info(f"Amount of terminal colors: {curses.COLORS}")
-        log.info(f"Amount of terminal color pairs: {curses.COLOR_PAIRS}")
-
         self.weekdata = WeekData.dummy(48)
         self.resize()
         self.input_loop()
@@ -236,8 +227,11 @@ class TimetablePad(VertScrollPad):
 
     def update_timeslot(self, y, x):
         """Updates a timeslot by its y/x index"""
-        self.pad.addstr(
-            y, self.timewidth + self.slotwidth // 2 + 1 + (self.slotwidth + 1) * x, "x"
+        self.pad.addch(
+            y,
+            self.timewidth + self.slotwidth // 2 + 1 + (self.slotwidth + 1) * x,
+            "x",
+            curses.color_pair(self.weekdata.timetable[y][x].plan.color_pair),
         )
 
     def select(self, individ=True):
@@ -301,9 +295,9 @@ class WeekHeaderPad(Pad):
         self.pad.addstr(0, 5 - len(month), month)
         year = weekdate.strftime("%Y")
         self.pad.addstr(1, 5 - len(year), year)
-        for i in range(7):
-            self.pad.addstr(0, 6 + i * 6, weekdate.strftime("%d"))
-            self.pad.addstr(1, 6 + i * 6, weekdate.strftime("%a"))
+        for i in range(7, self.padwidth, 6):
+            self.pad.addstr(0, i, weekdate.strftime("%d"))
+            self.pad.addstr(1, i, weekdate.strftime("%a"))
             weekdate += datetime.timedelta(days=1)
 
 
@@ -354,10 +348,31 @@ class ActivityFrame(Frame):
 
 
 class Activity:
-    def __init__(self, name: str, color, desc=""):
+    color_counter = 16
+    color_pair_counter = 16
+
+    def __init__(self, name: str, r, g, b, desc=""):
         self.name = name
-        self.color = color
+        self.r = r
+        self.g = g
+        self.b = b
         self.desc = desc
+
+        curses.init_color(Activity.color_counter, r, g, b)
+        self.color = Activity.color_counter
+        curses.init_pair(Activity.color_counter, self.color, 0)
+        self.color_pair = Activity.color_pair_counter
+
+        Activity.color_counter = (
+            Activity.color_counter + 1
+            if Activity.color_counter != curses.COLORS - 1
+            else 16
+        )
+        Activity.color_pair_counter = (
+            Activity.color_pair_counter + 1
+            if Activity.color_pair_counter != curses.COLOR_PAIRS - 1
+            else 1
+        )
 
 
 class Timeslot:
@@ -409,8 +424,8 @@ class WeekData:
     def dummy(cls, nr_timesegments):
         """Returns a week_data object with placeholder dummy data"""
         activities = {
-            "dummy": Activity("dummy", 0),
-            "dummy_verify": Activity("dummy_verify", 1),
+            "dummy": Activity("dummy", 700, 500, 0),
+            "dummy_verify": Activity("dummy_verify", 0, 900, 300),
         }
         return cls(
             nr_timesegments,
@@ -481,8 +496,8 @@ class Parser:
         """Helper function for parse_week : parses the activities of a week"""
         activities = dict()
         for _ in range(nr_activities):
-            name, color = self.parse_next_line(2)
-            activities.update({name: Activity(name, color)})
+            name, r, g, b = self.parse_next_line(4)
+            activities.update({name: Activity(name, r, g, b)})
         self.parse_next_line()
         return activities
 
@@ -531,6 +546,14 @@ class CleanExit(Exception):
 
 
 def main(stdscr):
+    log.info(f"Terminal has color support: {curses.has_colors()}")
+    log.info(
+        f"Terminal has extended color support: {curses.has_extended_color_support()}"
+    )
+    log.info(f"Terminal can change colors: {curses.can_change_color()}")
+    log.info(f"Amount of terminal colors: {curses.COLORS}")
+    log.info(f"Amount of terminal color pairs: {curses.COLOR_PAIRS}")
+
     TwoEight(stdscr)
 
 
