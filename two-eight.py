@@ -41,7 +41,7 @@ class TwoEight:
         self.screen.clear()
         curses.resize_term(self.y, self.x)
         self.frames = [
-            WeekFrame(
+            TimetableFrame(
                 self.screen, 0, 0, self.y - 1, min(self.x - 1, 50), WeekData.dummy(48)
             )
         ]
@@ -258,8 +258,12 @@ class TimetablePad(VertScrollPad):
             ]
 
         for y, x in self.selected:
-            self.pad.addch(y, self.timewidth + x * 6, ">")
-            self.pad.addch(y, self.timewidth + x * 6 + self.slotwidth + 1, "<")
+            self.pad.addch(y, self.timewidth + x * 6, "+")
+            self.pad.addch(y, self.timewidth + x * 6 + self.slotwidth + 1, "+")
+        self.pad.addch(self.cursor_y, self.timewidth + self.cursor_x * 6, ">")
+        self.pad.addch(
+            self.cursor_y, self.timewidth + self.cursor_x * 6 + self.slotwidth + 1, "<"
+        )
         self.refresh()
 
     def clear_select(self):
@@ -299,7 +303,7 @@ class WeekHeaderPad(Pad):
             weekdate += datetime.timedelta(days=1)
 
 
-class WeekFrame(Frame):
+class TimetableFrame(Frame):
     def __init__(self, screen, uly, ulx, bry, brx, weekdata):
         self.weekdata = weekdata
         super().__init__(
