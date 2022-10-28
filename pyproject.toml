@@ -9,7 +9,7 @@ packages = [{include = "two_eight"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-windows-curses = "^2.3.0"
+windows-curses = {version = "^2.3.0", platform = "windows"}
 
 [tool.poetry.group.dev.dependencies]
 pylint = "^2.15.4"
