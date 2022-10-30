@@ -36,9 +36,8 @@ class TwoEight:
 
     def refresh(self):
         self.frames = [
-            TimetableFrame(
-                self.screen, 0, 0, self.y - 1, min(self.x - 1, 50), self.weekdata
-            )
+            TimetableFrame(self.screen, 0, 0, self.y - 1, 50, self.weekdata),
+            ActivityFrame(self.screen, 0, 50, self.y - 1, self.x - 2, self.weekdata),
         ]
         self.draw_frame()
         self.screen.refresh()
@@ -116,8 +115,8 @@ class Frame:
             return
         pad.clipuly += self.uly + 1
         pad.clipbry += self.uly + 1
-        pad.clipulx += self.uly + 1
-        pad.clipbrx += self.uly + 1
+        pad.clipulx += self.ulx + 1
+        pad.clipbrx += self.ulx + 1
         self.pads.append(pad)
         pad.draw_static()
 
@@ -227,11 +226,21 @@ class TimetablePad(VertScrollPad):
 
     def update_timeslot(self, y, x):
         """Updates a timeslot by its y/x index"""
+        timeslot = self.weekdata.timetable[y][x]
+        center_x = self.timewidth + (self.slotwidth + 1) * x + 1
+        if timeslot.plan == timeslot.verify:
+            char = "█"
+        else:
+            char = "░"
+        for x_paint in range(center_x, center_x + self.slotwidth):
+            self.pad.addch(
+                y, x_paint, char, curses.color_pair(timeslot.verify.color_pair)
+            )
         self.pad.addch(
             y,
-            self.timewidth + self.slotwidth // 2 + 1 + (self.slotwidth + 1) * x,
-            "x",
-            curses.color_pair(self.weekdata.timetable[y][x].plan.color_pair),
+            center_x + self.slotwidth // 2,
+            char,
+            curses.color_pair(timeslot.plan.color_pair),
         )
 
     def select(self, individ=True):
@@ -285,8 +294,12 @@ class TimetablePad(VertScrollPad):
 
 
 class WeekHeaderPad(Pad):
-    def __init__(self, screen, padwidth, clipuly, clipulx, clipbrx, weekdata):
-        super().__init__(screen, 3, padwidth, clipuly, clipulx, clipuly + 2, clipbrx)
+    def __init__(
+        self, screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx, weekdata
+    ):
+        super().__init__(
+            screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx
+        )
         self.weekdata = weekdata
 
     def draw_static(self):
@@ -313,9 +326,11 @@ class TimetableFrame(Frame):
         )
         self.header = WeekHeaderPad(
             self.screen,
+            3,
             self.width,
             0,
             0,
+            2,
             self.width - 1,
             weekdata,
         )
@@ -336,15 +351,53 @@ class TimetableFrame(Frame):
 
 
 class ActivityTablePad(VertScrollPad):
-    def __init__(self):
-        pass
+    def __init__(
+        self, screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx, weekdata
+    ):
+        self.weekdata = weekdata
+        super().__init__(
+            screen,
+            padheight,
+            padwidth,
+            clipuly,
+            clipulx,
+            clipbry,
+            clipbrx,
+        )
+
+
+class ActivityHeaderPad(Pad):
+    def __init__(self, screen, padwidth, clipuly, clipulx, clipbry, clipbrx):
+        super().__init__(screen, 2, padwidth, clipuly, clipulx, clipbry, clipbrx)
+
+    def draw_static(self):
+        self.pad.addch(0, 2, "p")
+        self.pad.addch(0, 5, "v")
+        self.pad.addstr(0, 8, "name")
 
 
 class ActivityFrame(Frame):
     def __init__(self, screen, uly, ulx, bry, brx, weekdata):
         self.weekdata = weekdata
         super().__init__(screen, uly, ulx, bry, brx)
-        self.activitytable = ActivityTablePad()
+        self.header = ActivityHeaderPad(
+            self.screen, self.width, 0, 0, 1, self.width - 1
+        )
+        self.add_pad(self.header)
+        self.activitytable = ActivityTablePad(
+            self.screen,
+            len(self.weekdata.activities),
+            self.width,
+            self.header.clipheight,
+            0,
+            self.height - 1,
+            self.width - 1,
+            self.weekdata,
+        )
+        self.add_pad(self.activitytable)
+
+    def input_loop(self, c):
+        pass
 
 
 class Activity:
