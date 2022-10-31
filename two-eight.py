@@ -239,16 +239,18 @@ class TimetablePad(VertScrollPad):
             char = "█"
         else:
             char = "░"
-        for x_paint in range(center_x, center_x + self.slotwidth):
+        if timeslot.verify != None:
+            for x_paint in range(center_x, center_x + self.slotwidth):
+                self.pad.addch(
+                    y, x_paint, char, curses.color_pair(timeslot.verify.color_pair)
+                )
+        if timeslot.plan != None:
             self.pad.addch(
-                y, x_paint, char, curses.color_pair(timeslot.verify.color_pair)
+                y,
+                center_x + self.slotwidth // 2,
+                char,
+                curses.color_pair(timeslot.plan.color_pair),
             )
-        self.pad.addch(
-            y,
-            center_x + self.slotwidth // 2,
-            char,
-            curses.color_pair(timeslot.plan.color_pair),
-        )
 
     def draw_cursor(self):
         self.pad.addch(self.cursor_y, self.timewidth + self.cursor_x * 6, ">")
@@ -636,10 +638,13 @@ class Parser:
             for j in range(7):
                 try:
                     timetable[i][j] = Timeslot.from_strings(
-                        *row[2 * j : 2 * j + 2], activities
+                        row[2 * j], row[2 * j + 1], activities
                     )
-                except:
-                    pass
+                except ParseError:
+                    log.error(
+                        f"Could not parse timeslot in file {self.dbfile_path} line {self.line} column {j} from '{row[2 * j]}' and '{row[2 * j + 1]}'"
+                    )
+                    timetable[i][j] = Timeslot(None, None)
         return timetable
 
     def parse_next_line(self, expected_el: int = 0) -> list:
@@ -653,10 +658,10 @@ class Parser:
         self.line += 1
         elements = line.replace("\n", "").split(self.delimiter)
         if expected_el != 0 and len(elements) != expected_el:
-            log.warning(
+            log.error(
                 f"Expected {expected_el} elements but parsed {len(elements)} elements in file {self.dbfile_path} line {self.line}."
             )
-            return None
+            raise ParseError
         return elements
 
     def seek_for(self, *args):
@@ -669,6 +674,10 @@ class Parser:
         """Resets file seeker to the beginning of the file"""
         self.file.seek(0, 0)
         self.line = 0
+
+
+class ParseError(Exception):
+    pass
 
 
 class CleanExit(Exception):
