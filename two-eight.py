@@ -306,7 +306,7 @@ class TimetablePad(VertScrollPad):
             self.select(individ=bool(c - ord("D")))
 
 
-class WeekHeaderPad(Pad):
+class TimetableHeaderPad(Pad):
     def __init__(
         self, screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx, weekdata
     ):
@@ -337,7 +337,7 @@ class TimetableFrame(Frame):
             bry,
             brx,
         )
-        self.header = WeekHeaderPad(
+        self.header = TimetableHeaderPad(
             self.screen,
             3,
             self.width,
