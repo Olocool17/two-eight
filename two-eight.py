@@ -364,6 +364,11 @@ class ActivityTablePad(VertScrollPad):
             clipbry,
             clipbrx,
         )
+        self.update_activities()
+
+    def update_activities(self):
+        for i, activity in enumerate(self.weekdata.activities.values()):
+            self.pad.addstr(i, 8, activity.name)
 
 
 class ActivityHeaderPad(Pad):
@@ -463,11 +468,17 @@ class WeekData:
         date: datetime.date = None,
     ):
         self.nr_timesegments = nr_timesegments
-        self.activities = activities
+        self.activities = dict(sorted(activities.items()))
+        self.selected_activity = None
         self.timetable = timetable
+        self.selected_timeslots = []
         if datetime.date != None:
             self.date = datetime.date.fromisocalendar(year, week, 1)
         self.date = date - datetime.timedelta(days=date.weekday())
+
+    def add_activity(self, activity: Activity):
+        self.activities.update({activity.name: activity})
+        self.activities = dict(sorted(self.activities.items()))
 
     @staticmethod
     def from_file(parser, week: int, year: int):
