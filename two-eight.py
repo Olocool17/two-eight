@@ -222,9 +222,6 @@ class TimetablePad(VertScrollPad):
             self.pad.addstr(
                 i, 0, f"{minutes // 60:02d}:{minutes % 60:02d}", curses.A_DIM
             )
-            if i > self.clipheight + self.scrollpos:
-                self.scrollpos += self.clipheight
-                self.refresh()
         self.scrollpos = 0
         self.draw_cursor()
         for x in range(self.days):
