@@ -203,12 +203,8 @@ class TimetablePad(VertScrollPad):
         )
         self.timewidth = 5
         self.slotwidth = 5
-        self.selected = [(0, 0)]  # list of selected timeslots by indices
         self.cursor_x, self.cursor_y = 0, 0
         self.hold_cursor_x, self.hold_cursor_y = 0, 0
-        self.weekdata.selected_timeslot = self.weekdata.timetable[self.cursor_y][
-            self.cursor_x
-        ]
 
     def draw_static(self):
         if (
@@ -258,14 +254,14 @@ class TimetablePad(VertScrollPad):
     def select(self, individ=True):
         self.cursor_y %= self.padheight
         self.cursor_x %= self.days
-        self.weekdata.change_timeslot(self.cursor_y, self.cursor_x)
+        self.weekdata.change_cursor_timeslot(self.cursor_y, self.cursor_x)
         self.scroll(self.cursor_y)
         self.clear_select()
         if individ:
             self.hold_cursor_y, self.hold_cursor_x = self.cursor_y, self.cursor_x
-            self.selected = [(self.cursor_y, self.cursor_x)]
+            selected = [(self.cursor_y, self.cursor_x)]
         else:
-            self.selected = [
+            selected = [
                 (y, x)
                 for y in range(
                     min(self.cursor_y, self.hold_cursor_y),
@@ -276,15 +272,15 @@ class TimetablePad(VertScrollPad):
                     max(self.cursor_x, self.hold_cursor_x) + 1,
                 )
             ]
-
-        for y, x in self.selected:
+        self.weekdata.change_selected_timeslots(selected)
+        for y, x in selected:
             self.pad.addch(y, self.timewidth + x * 6, "+")
             self.pad.addch(y, self.timewidth + x * 6 + self.slotwidth + 1, "+")
         self.draw_cursor()
         self.refresh()
 
     def clear_select(self):
-        for y, x in self.selected:
+        for y, x in self.weekdata.selected_timeslots_coords:
             self.pad.addch(y, 5 + x * 6, " ")
             self.pad.addch(y, 11 + x * 6, " ")
 
@@ -373,65 +369,53 @@ class ActivityTablePad(VertScrollPad):
             clipbrx,
         )
         self.cursor = 0
-        self.activities_list = []
-        self.update_activities()
+        self.draw_activities()
         self.draw_cursor()
 
-    def update_activities(self):
+    def draw_activities(self):
         self.activities_list = []
-        for i, activity in enumerate(self.weekdata.activities.values()):
+        for i, activity in enumerate(self.weekdata.activities):
             self.activities_list.append(activity)
             self.pad.addstr(i, 11, activity.name)
             self.pad.chgat(i, 0, curses.color_pair(activity.color) + curses.A_REVERSE)
         self.pad.addstr(len(self.activities_list), 11, " + new")
-        self.update_activities_markers()
+        self.draw_activities_markers()
 
-    def update_activities_markers(self):
-        for i, activity in enumerate(self.activities_list):
-            if activity == self.weekdata.selected_timeslot.plan:
+    def draw_activities_markers(self):
+        for i, activity in enumerate(self.weekdata.activities):
+            if activity == self.weekdata.cursor_timeslot.plan:
                 self.pad.addch(
                     i, 2, "x", curses.color_pair(activity.color) + curses.A_REVERSE
                 )
-            if activity == self.weekdata.selected_timeslot.verify:
+            if activity == self.weekdata.cursor_timeslot.verify:
                 self.pad.addch(
                     i, 5, "x", curses.color_pair(activity.color) + curses.A_REVERSE
                 )
         self.refresh()
 
     def clear_activities_markers(self):
-        for i, activity in enumerate(self.activities_list):
-            if activity == self.weekdata.selected_timeslot.plan:
+        for i, activity in enumerate(self.weekdata.activities):
+            if activity == self.weekdata.cursor_timeslot.plan:
                 self.pad.addch(
                     i, 2, " ", curses.color_pair(activity.color) + curses.A_REVERSE
                 )
-            if activity == self.weekdata.selected_timeslot.verify:
+            if activity == self.weekdata.cursor_timeslot.verify:
                 self.pad.addch(
                     i, 5, " ", curses.color_pair(activity.color) + curses.A_REVERSE
                 )
 
-    def clear_cursor(self):
-        if self.cursor < len(self.activities_list):
+    def draw_cursor(self, clear=False):
+        char = ">" if not clear else " "
+        if self.cursor < self.padheight - 1:
             self.pad.addch(
                 self.cursor,
                 8,
-                " ",
-                curses.color_pair(self.activities_list[self.cursor].color)
+                char,
+                curses.color_pair(self.weekdata.activities[self.cursor].color)
                 + curses.A_REVERSE,
             )
         else:
-            self.pad.addch(self.cursor, 8, " ")
-
-    def draw_cursor(self):
-        if self.cursor < len(self.activities_list):
-            self.pad.addch(
-                self.cursor,
-                8,
-                ">",
-                curses.color_pair(self.activities_list[self.cursor].color)
-                + curses.A_REVERSE,
-            )
-        else:
-            self.pad.addch(self.cursor, 8, ">")
+            self.pad.addch(self.cursor, 8, char)
 
     def select(self):
         self.cursor %= self.padheight
@@ -439,15 +423,32 @@ class ActivityTablePad(VertScrollPad):
         self.draw_cursor()
         self.refresh()
 
+    def assign(self, verify=False):
+        self.clear_activities_markers()
+        if self.cursor != self.padheight - 1:
+            self.weekdata.change_selected_timeslots_activity(
+                self.weekdata.activities[self.cursor], verify=verify
+            )
+        else:
+            self.create_new_activity()
+        self.draw_activities_markers()
+
+    def create_new_activity(self):
+        pass
+
     def input_loop(self, c):
         if c == ord("k"):
-            self.clear_cursor()
+            self.draw_cursor(clear=True)
             self.cursor -= 1
             self.select()
         elif c == ord("j"):
-            self.clear_cursor()
+            self.draw_cursor(clear=True)
             self.cursor += 1
             self.select()
+        elif c == ord("h"):
+            self.assign(verify=False)
+        elif c == ord("l"):
+            self.assign(verify=True)
 
 
 class ActivityHeaderPad(Pad):
@@ -527,6 +528,7 @@ class Timeslot:
 
     @classmethod
     def from_strings(cls, plan: str, verify: str, activities: dict):
+        """Given an activity dictionary, creates a Timeslot object from strings. Used by the parser."""
         try:
             plan = activities[plan]
         except KeyError:
@@ -550,17 +552,18 @@ class WeekData:
     def __init__(
         self,
         nr_timesegments: int,
-        activities: dict,
+        activities: list,
         timetable: list,
         week: int = 1,
         year: int = 1,
         date: datetime.date = None,
     ):
         self.nr_timesegments = nr_timesegments
-        self.activities = dict(sorted(activities.items()))
-        self.selected_activity = None
+        self.activities = sorted(activities, key=lambda x: x.name)
+        self.selected_activity = self.activities[0]
         self.timetable = timetable
-        self.selected_timeslot = None
+        self.selected_timeslots_coords = [(0, 0)]
+        self.cursor_timeslot = timetable[0][0]
         self.activityframe = None
         self.timetableframe = None
         if datetime.date != None:
@@ -575,10 +578,24 @@ class WeekData:
         self.timetableframe = timetableframe
         self.activityframe = activityframe
 
-    def change_timeslot(self, y, x):
+    def change_selected_timeslots_activity(self, activity: Activity, verify=False):
+        if not verify:
+            for y, x in self.selected_timeslots_coords:
+                self.timetable[y][x].plan = activity
+                self.timetableframe.timetable.draw_timeslot(y, x)
+        else:
+            for y, x in self.selected_timeslots_coords:
+                self.timetable[y][x].verify = activity
+                self.timetableframe.timetable.draw_timeslot(y, x)
+        self.timetableframe.timetable.refresh()
+
+    def change_selected_timeslots(self, selected_timeslots_coords):
+        self.selected_timeslots_coords = selected_timeslots_coords
+
+    def change_cursor_timeslot(self, y, x):
         self.activityframe.activitytable.clear_activities_markers()
-        self.selected_timeslot = self.timetable[y][x]
-        self.activityframe.activitytable.update_activities_markers()
+        self.cursor_timeslot = self.timetable[y][x]
+        self.activityframe.activitytable.draw_activities_markers()
 
     @staticmethod
     def from_file(parser, week: int, year: int):
@@ -587,19 +604,15 @@ class WeekData:
     @classmethod
     def dummy(cls, nr_timesegments, nr_activities=10):
         """Returns a week_data object with placeholder dummy data"""
-        activities = {
-            "dummy" + str(i): Activity.dummy("dummy" + str(i))
-            for i in range(nr_activities)
-        }
+        activities = [Activity.dummy("dummy" + str(i)) for i in range(nr_activities)]
         return cls(
             nr_timesegments,
             activities,
             [
                 [
-                    Timeslot.from_strings(
-                        "dummy" + str(random.randrange(0, nr_activities)),
-                        "dummy" + str(random.randrange(0, nr_activities)),
-                        activities,
+                    Timeslot(
+                        activities[random.randrange(0, nr_activities)],
+                        activities[random.randrange(0, nr_activities)],
                     )
                     for j in range(7)
                 ]
@@ -658,7 +671,9 @@ class Parser:
         activities = self.parse_activities(nr_activities)
         timetable = self.parse_timetable(nr_timesegments, activities)
         self.reset_seek()
-        return WeekData(nr_timesegments, activities, timetable, week, year)
+        return WeekData(
+            nr_timesegments, list(activities.values()), timetable, week, year
+        )
 
     def parse_activities(self, nr_activities: int) -> dict:
         """Helper function for parse_week : parses the activities of a week"""
