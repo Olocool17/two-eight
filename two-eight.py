@@ -374,17 +374,22 @@ class ActivityTablePad(VertScrollPad):
             clipbry,
             clipbrx,
         )
+        self.cursor = 0
+        self.activities_list = []
         self.update_activities()
+        self.draw_cursor()
 
     def update_activities(self):
+        self.activities_list = []
         for i, activity in enumerate(self.weekdata.activities.values()):
-            self.pad.addstr(i, 8, activity.name)
+            self.activities_list.append(activity)
+            self.pad.addstr(i, 11, activity.name)
             self.pad.chgat(i, 0, curses.color_pair(activity.color) + curses.A_REVERSE)
 
-        self.update_activities_selection()
+        self.update_activities_markers()
 
-    def update_activities_selection(self):
-        for i, activity in enumerate(self.weekdata.activities.values()):
+    def update_activities_markers(self):
+        for i, activity in enumerate(self.activities_list):
             if activity == self.weekdata.selected_timeslot.plan:
                 self.pad.addch(
                     i, 2, "x", curses.color_pair(activity.color) + curses.A_REVERSE
@@ -395,8 +400,8 @@ class ActivityTablePad(VertScrollPad):
                 )
         self.refresh()
 
-    def clear_activities_selection(self):
-        for i, activity in enumerate(self.weekdata.activities.values()):
+    def clear_activities_markers(self):
+        for i, activity in enumerate(self.activities_list):
             if activity == self.weekdata.selected_timeslot.plan:
                 self.pad.addch(
                     i, 2, " ", curses.color_pair(activity.color) + curses.A_REVERSE
@@ -406,6 +411,40 @@ class ActivityTablePad(VertScrollPad):
                     i, 5, " ", curses.color_pair(activity.color) + curses.A_REVERSE
                 )
 
+    def clear_cursor(self):
+        self.pad.addch(
+            self.cursor,
+            8,
+            " ",
+            curses.color_pair(self.activities_list[self.cursor].color)
+            + curses.A_REVERSE,
+        )
+
+    def draw_cursor(self):
+        self.pad.addch(
+            self.cursor,
+            8,
+            ">",
+            curses.color_pair(self.activities_list[self.cursor].color)
+            + curses.A_REVERSE,
+        )
+
+    def select(self):
+        self.cursor %= len(self.weekdata.activities)
+        self.scroll(self.cursor)
+        self.draw_cursor()
+        self.refresh()
+
+    def input_loop(self, c):
+        if c == ord("k"):
+            self.clear_cursor()
+            self.cursor -= 1
+            self.select()
+        elif c == ord("j"):
+            self.clear_cursor()
+            self.cursor += 1
+            self.select()
+
 
 class ActivityHeaderPad(Pad):
     def __init__(self, screen, padwidth, clipuly, clipulx, clipbry, clipbrx):
@@ -414,7 +453,7 @@ class ActivityHeaderPad(Pad):
     def draw_static(self):
         self.pad.addch(0, 2, "p")
         self.pad.addch(0, 5, "v")
-        self.pad.addstr(0, 8, "name")
+        self.pad.addstr(0, 11, "name")
 
 
 class ActivityFrame(Frame):
@@ -438,7 +477,7 @@ class ActivityFrame(Frame):
         self.add_pad(self.activitytable)
 
     def input_loop(self, c):
-        pass
+        self.activitytable.input_loop(c)
 
 
 class Activity:
@@ -534,9 +573,9 @@ class WeekData:
         self.activityframe = activityframe
 
     def change_timeslot(self, y, x):
-        self.activityframe.activitytable.clear_activities_selection()
+        self.activityframe.activitytable.clear_activities_markers()
         self.selected_timeslot = self.timetable[y][x]
-        self.activityframe.activitytable.update_activities_selection()
+        self.activityframe.activitytable.update_activities_markers()
 
     @staticmethod
     def from_file(parser, week: int, year: int):
