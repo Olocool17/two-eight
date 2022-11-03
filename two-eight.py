@@ -361,13 +361,11 @@ class TimetableFrame(Frame):
 
 
 class ActivityTablePad(VertScrollPad):
-    def __init__(
-        self, screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx, weekdata
-    ):
+    def __init__(self, screen, padwidth, clipuly, clipulx, clipbry, clipbrx, weekdata):
         self.weekdata = weekdata
         super().__init__(
             screen,
-            padheight,
+            len(self.weekdata.activities) + 1,
             padwidth,
             clipuly,
             clipulx,
@@ -385,7 +383,7 @@ class ActivityTablePad(VertScrollPad):
             self.activities_list.append(activity)
             self.pad.addstr(i, 11, activity.name)
             self.pad.chgat(i, 0, curses.color_pair(activity.color) + curses.A_REVERSE)
-
+        self.pad.addstr(len(self.activities_list), 11, " + new")
         self.update_activities_markers()
 
     def update_activities_markers(self):
@@ -412,25 +410,31 @@ class ActivityTablePad(VertScrollPad):
                 )
 
     def clear_cursor(self):
-        self.pad.addch(
-            self.cursor,
-            8,
-            " ",
-            curses.color_pair(self.activities_list[self.cursor].color)
-            + curses.A_REVERSE,
-        )
+        if self.cursor < len(self.activities_list):
+            self.pad.addch(
+                self.cursor,
+                8,
+                " ",
+                curses.color_pair(self.activities_list[self.cursor].color)
+                + curses.A_REVERSE,
+            )
+        else:
+            self.pad.addch(self.cursor, 8, " ")
 
     def draw_cursor(self):
-        self.pad.addch(
-            self.cursor,
-            8,
-            ">",
-            curses.color_pair(self.activities_list[self.cursor].color)
-            + curses.A_REVERSE,
-        )
+        if self.cursor < len(self.activities_list):
+            self.pad.addch(
+                self.cursor,
+                8,
+                ">",
+                curses.color_pair(self.activities_list[self.cursor].color)
+                + curses.A_REVERSE,
+            )
+        else:
+            self.pad.addch(self.cursor, 8, ">")
 
     def select(self):
-        self.cursor %= len(self.weekdata.activities)
+        self.cursor %= self.padheight
         self.scroll(self.cursor)
         self.draw_cursor()
         self.refresh()
@@ -466,7 +470,6 @@ class ActivityFrame(Frame):
         self.add_pad(self.header)
         self.activitytable = ActivityTablePad(
             self.screen,
-            len(self.weekdata.activities),
             self.width,
             self.header.clipheight,
             0,
