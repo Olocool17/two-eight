@@ -373,12 +373,20 @@ class ActivityTablePad(VertScrollPad):
         self.draw_cursor()
 
     def draw_activities(self):
-        self.activities_list = []
+        if self.padheight < len(self.weekdata.activities) + 1:
+            super().__init__(
+                self.screen,
+                len(self.weekdata.activities) + 1,
+                self.padwidth,
+                self.clipuly,
+                self.clipulx,
+                self.clipbry,
+                self.clipbrx,
+            )
         for i, activity in enumerate(self.weekdata.activities):
-            self.activities_list.append(activity)
             self.pad.addstr(i, 11, activity.name)
             self.pad.chgat(i, 0, curses.color_pair(activity.color) + curses.A_REVERSE)
-        self.pad.addstr(len(self.activities_list), 11, " + new")
+        self.pad.addstr(len(self.weekdata.activities), 11, " + new")
         self.draw_activities_markers()
 
     def draw_activities_markers(self):
@@ -424,16 +432,44 @@ class ActivityTablePad(VertScrollPad):
         self.refresh()
 
     def assign(self, verify=False):
-        self.clear_activities_markers()
         if self.cursor != self.padheight - 1:
+            self.clear_activities_markers()
             self.weekdata.change_selected_timeslots_activity(
                 self.weekdata.activities[self.cursor], verify=verify
             )
+            self.draw_activities_markers()
         else:
             self.create_new_activity()
-        self.draw_activities_markers()
 
     def create_new_activity(self):
+        self.pad.addstr(self.padheight - 1, 11, " " * 6)
+        self.refresh()
+        activity_name = ""
+        maxwidth = self.padwidth - 12
+        c = self.screen.getch()
+        while (
+            c != curses.KEY_ENTER
+            and c != 10  # also check for new line
+            and c != 13  # and carriage return
+        ):
+            activity_name += chr(c)
+            if c == curses.KEY_BACKSPACE or c == ord("\b"):
+                activity_name = activity_name[:-2]
+                if len(activity_name) + 1 <= maxwidth:
+                    self.pad.addch(self.padheight - 1, 11 + len(activity_name), " ")
+            self.pad.addstr(self.padheight - 1, 11, activity_name[-maxwidth:])
+            self.refresh()
+            c = self.screen.getch()
+        new_activity = Activity(
+            activity_name,
+            random.randint(0, 1000),
+            random.randint(0, 1000),
+            random.randint(0, 1000),
+        )
+        self.weekdata.add_activity(new_activity)
+        self.cursor = self.weekdata.activities.index(new_activity)
+        self.draw_activities()
+        self.select()
         pass
 
     def input_loop(self, c):
@@ -571,8 +607,8 @@ class WeekData:
         self.date = date - datetime.timedelta(days=date.weekday())
 
     def add_activity(self, activity: Activity):
-        self.activities.update({activity.name: activity})
-        self.activities = dict(sorted(self.activities.items()))
+        self.activities.append(activity)
+        self.activities = sorted(self.activities, key=lambda x: x.name)
 
     def add_frames(self, timetableframe: TimetableFrame, activityframe: ActivityFrame):
         self.timetableframe = timetableframe
