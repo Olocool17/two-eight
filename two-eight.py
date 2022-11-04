@@ -460,14 +460,15 @@ class ActivityTablePad(VertScrollPad):
             self.pad.addstr(self.padheight - 1, 11, activity_name[-maxwidth:])
             self.refresh()
             c = self.screen.getch()
-        new_activity = Activity(
-            activity_name,
-            random.randint(0, 1000),
-            random.randint(0, 1000),
-            random.randint(0, 1000),
-        )
-        self.weekdata.add_activity(new_activity)
-        self.cursor = self.weekdata.activities.index(new_activity)
+        if activity_name != "":
+            new_activity = Activity(
+                activity_name,
+                random.randint(0, 1000),
+                random.randint(0, 1000),
+                random.randint(0, 1000),
+            )
+            self.weekdata.add_activity(new_activity)
+            self.cursor = self.weekdata.activities.index(new_activity)
         self.draw_activities()
         self.select()
         pass
