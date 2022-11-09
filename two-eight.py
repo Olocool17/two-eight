@@ -357,6 +357,8 @@ class TimetableFrame(Frame):
 
 
 class ActivityTablePad(VertScrollPad):
+    new_str = " + new"
+
     def __init__(self, screen, padwidth, clipuly, clipulx, clipbry, clipbrx, weekdata):
         self.weekdata = weekdata
         super().__init__(
@@ -373,7 +375,7 @@ class ActivityTablePad(VertScrollPad):
         self.draw_cursor()
 
     def draw_activities(self):
-        if self.padheight < len(self.weekdata.activities) + 1:
+        if self.padheight != len(self.weekdata.activities) + 1:
             super().__init__(
                 self.screen,
                 len(self.weekdata.activities) + 1,
@@ -386,7 +388,7 @@ class ActivityTablePad(VertScrollPad):
         for i, activity in enumerate(self.weekdata.activities):
             self.pad.addstr(i, 11, activity.name)
             self.pad.chgat(i, 0, curses.color_pair(activity.color) + curses.A_REVERSE)
-        self.pad.addstr(len(self.weekdata.activities), 11, " + new")
+        self.pad.addstr(len(self.weekdata.activities), 11, self.new_str)
         self.draw_activities_markers()
 
     def draw_activities_markers(self):
@@ -439,8 +441,27 @@ class ActivityTablePad(VertScrollPad):
             )
             self.draw_activities_markers()
 
+    def edit(self):
+        if self.cursor == self.padheight - 1:
+            self.create_new_activity()
+
+    def delete(self):
+        if len(self.weekdata.activities) <= 0 or self.cursor == self.padheight - 1:
+            return
+        self.pad.move(self.cursor, 0)
+        self.pad.clrtoeol()
+        self.pad.move(self.padheight - 2, 0)
+        self.pad.clrtoeol()
+        self.pad.move(self.padheight - 1, 0)
+        self.pad.clrtoeol()
+        self.refresh()
+        self.weekdata.delete_activity(self.weekdata.activities[self.cursor])
+        self.draw_activities()
+        self.select()
+
     def create_new_activity(self):
-        self.pad.addstr(self.padheight - 1, 11, " " * 6)
+        self.pad.move(self.padheight - 1, 11)
+        self.pad.clrtoeol()
         self.refresh()
         activity_name = ""
         maxwidth = self.padwidth - 12
@@ -485,7 +506,9 @@ class ActivityTablePad(VertScrollPad):
         elif c == ord("l"):
             self.assign(verify=True)
         elif c == ord("o"):
-            self.create_new_activity()
+            self.edit()
+        elif c == ord("u"):
+            self.delete()
 
 
 class ActivityHeaderPad(Pad):
@@ -610,6 +633,18 @@ class WeekData:
     def add_activity(self, activity: Activity):
         self.activities.append(activity)
         self.activities = sorted(self.activities, key=lambda x: x.name)
+
+    def delete_activity(self, activity: Activity):
+        for i, y in enumerate(self.timetable):
+            for j, x in enumerate(y):
+                if x.plan == activity:
+                    x.plan = None
+                    self.timetableframe.timetable.draw_timeslot(i, j)
+                if x.verify == activity:
+                    x.verify = None
+                    self.timetableframe.timetable.draw_timeslot(i, j)
+                self.timetableframe.timetable.refresh()
+        self.activities.remove(activity)
 
     def add_frames(self, timetableframe: TimetableFrame, activityframe: ActivityFrame):
         self.timetableframe = timetableframe
