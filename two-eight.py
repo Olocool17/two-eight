@@ -438,8 +438,6 @@ class ActivityTablePad(VertScrollPad):
                 self.weekdata.activities[self.cursor], verify=verify
             )
             self.draw_activities_markers()
-        else:
-            self.create_new_activity()
 
     def create_new_activity(self):
         self.pad.addstr(self.padheight - 1, 11, " " * 6)
@@ -474,18 +472,20 @@ class ActivityTablePad(VertScrollPad):
         pass
 
     def input_loop(self, c):
-        if c == ord("k"):
+        if c == ord("i"):
             self.draw_cursor(clear=True)
             self.cursor -= 1
             self.select()
-        elif c == ord("j"):
+        elif c == ord("k"):
             self.draw_cursor(clear=True)
             self.cursor += 1
             self.select()
-        elif c == ord("h"):
+        elif c == ord("j"):
             self.assign(verify=False)
         elif c == ord("l"):
             self.assign(verify=True)
+        elif c == ord("o"):
+            self.create_new_activity()
 
 
 class ActivityHeaderPad(Pad):
