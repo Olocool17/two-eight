@@ -671,10 +671,6 @@ class WeekData:
         self.cursor_timeslot = self.timetable[y][x]
         self.activityframe.activitytable.draw_activities_markers()
 
-    @staticmethod
-    def from_file(parser, week: int, year: int):
-        return parser.parse_week(week, year)
-
     @classmethod
     def dummy(cls, nr_timesegments, nr_activities=10):
         """Returns a week_data object with placeholder dummy data"""
