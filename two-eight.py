@@ -311,7 +311,9 @@ class TimetableHeaderPad(Pad):
         self.weekdata = weekdata
 
     def draw_static(self):
-        weekdate = self.weekdata.date
+        weekdate = self.weekdata.date - datetime.timedelta(
+            days=self.weekdata.date.weekday()
+        )
         month = weekdate.strftime("%b")
         self.pad.addstr(0, 5 - len(month), month)
         year = weekdate.strftime("%Y")
@@ -628,9 +630,9 @@ class WeekData:
         self.cursor_timeslot = timetable[0][0]
         self.activityframe = None
         self.timetableframe = None
-        if datetime.date != None:
+        self.date = date
+        if date == None:
             self.date = datetime.date.fromisocalendar(year, week, 1)
-        self.date = date - datetime.timedelta(days=date.weekday())
 
     def add_activity(self, activity: Activity):
         self.activities.append(activity)
@@ -688,7 +690,7 @@ class WeekData:
                 ]
                 for i in range(nr_timesegments)
             ],
-            date=datetime.date(2022, 10, 31),
+            date=datetime.date.today(),
         )
 
 
