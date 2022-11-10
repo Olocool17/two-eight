@@ -227,20 +227,22 @@ class TimetablePad(VertScrollPad):
     def draw_timeslot(self, y, x):
         """Draw a timeslot by its y/x index"""
         timeslot = self.weekdata.timetable[y][x]
-        center_x = self.timewidth + (self.slotwidth + 1) * x + 1
+        begin_x = self.timewidth + (self.slotwidth + 1) * x + 1
+        for x_paint in range(begin_x, begin_x + self.slotwidth):
+            self.pad.addch(y, x_paint, " ")
         if timeslot.plan == timeslot.verify:
             char = "█"
         else:
             char = "░"
         if timeslot.verify != None:
-            for x_paint in range(center_x, center_x + self.slotwidth):
+            for x_paint in range(begin_x, begin_x + self.slotwidth):
                 self.pad.addch(
                     y, x_paint, char, curses.color_pair(timeslot.verify.color_pair)
                 )
         if timeslot.plan != None:
             self.pad.addch(
                 y,
-                center_x + self.slotwidth // 2,
+                begin_x + self.slotwidth // 2,
                 char,
                 curses.color_pair(timeslot.plan.color_pair),
             )
