@@ -112,9 +112,15 @@ class Frame:
 
     def add_pad(self, pad: Pad):
         """Adds a pad to this frame, interpreting its 'clip' coordinates as relative to the frame"""
+        if pad.clipbry < pad.clipuly or pad.clipbrx < pad.clipbry:
+            log.warning(
+                f"Could not add pad {pad.__class__.__name__} with relative upper left corner ({pad.clipuly, pad.clipulx}) and relative bottom right corner ({pad.clipbry, pad.clipbrx}) because width or height is zero or negative.  "
+            )
+            return
+
         if pad.clipbry >= self.height or pad.clipbrx >= self.width:
             log.warning(
-                f"Could not add pad with relative right corner ({pad.clipbry, pad.clipbrx}) to frame with height {self.height} and width {self.width}"
+                f"Could not add pad {pad.__class__.__name__} with relative bottom right corner ({pad.clipbry, pad.clipbrx}) to frame with height {self.height} and width {self.width}"
             )
             return
         pad.clipuly += self.uly + 1
