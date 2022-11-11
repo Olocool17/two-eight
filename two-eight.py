@@ -167,17 +167,24 @@ class Frame:
 
 
 class VertScrollPad(Pad):
-    def __init__(
-        self, screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx=None
-    ):
-        if clipbrx == None:
-            clipbrx = padwidth - 1
+    def __init__(self, screen, padheight, padwidth, clipuly, clipulx, clipbry):
         super().__init__(
-            screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx
+            screen, padheight, padwidth, clipuly, clipulx, clipbry, padwidth - 1
         )
 
         self.scrollpos = 0
         self.prescroll = self.clipheight // 4
+
+    def change_height(self, padheight):
+        super().__init__(
+            self.screen,
+            padheight,
+            self.padwidth,
+            self.clipuly,
+            self.clipulx,
+            self.clipbry,
+            self.clipbrx,
+        )
 
     def refresh(self):
         self.pad.refresh(
@@ -389,15 +396,7 @@ class ActivityTablePad(VertScrollPad):
 
     def draw_activities(self):
         if self.padheight != len(self.weekdata.activities) + 1:
-            super().__init__(
-                self.screen,
-                len(self.weekdata.activities) + 1,
-                self.padwidth,
-                self.clipuly,
-                self.clipulx,
-                self.clipbry,
-                clipbrx=self.clipbrx,
-            )
+            self.change_height(len(self.weekdata.activities) + 1)
         for i, activity in enumerate(self.weekdata.activities):
             self.pad.addstr(i, 11, activity.name)
             self.pad.chgat(i, 0, curses.color_pair(activity.color) + curses.A_REVERSE)
