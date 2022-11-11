@@ -167,10 +167,15 @@ class Frame:
 
 
 class VertScrollPad(Pad):
-    def __init__(self, screen, padheight, padwidth, clipuly, clipulx, clipbry):
+    def __init__(
+        self, screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx=None
+    ):
+        if clipbrx == None:
+            clipbrx = padwidth - 1
         super().__init__(
-            screen, padheight, padwidth, clipuly, clipulx, clipbry, padwidth - 1
+            screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx
         )
+
         self.scrollpos = 0
         self.prescroll = self.clipheight // 4
 
@@ -391,6 +396,7 @@ class ActivityTablePad(VertScrollPad):
                 self.clipuly,
                 self.clipulx,
                 self.clipbry,
+                clipbrx=self.clipbrx,
             )
         for i, activity in enumerate(self.weekdata.activities):
             self.pad.addstr(i, 11, activity.name)
