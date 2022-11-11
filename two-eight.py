@@ -654,11 +654,14 @@ class WeekData:
             for j, x in enumerate(y):
                 if x.plan == activity:
                     x.plan = None
-                    self.timetableframe.timetable.draw_timeslot(i, j)
+                    if self.timetableframe.timetable != None:
+                        self.timetableframe.timetable.draw_timeslot(i, j)
                 if x.verify == activity:
                     x.verify = None
-                    self.timetableframe.timetable.draw_timeslot(i, j)
-                self.timetableframe.timetable.refresh()
+                    if self.timetableframe.timetable != None:
+                        self.timetableframe.timetable.draw_timeslot(i, j)
+        if self.timetableframe.timetable != None:
+            self.timetableframe.timetable.refresh()
         self.activities.remove(activity)
 
     def add_frames(self, timetableframe: TimetableFrame, activityframe: ActivityFrame):
@@ -666,15 +669,15 @@ class WeekData:
         self.activityframe = activityframe
 
     def change_selected_timeslots_activity(self, activity: Activity, verify=False):
-        if not verify:
-            for y, x in self.selected_timeslots_coords:
+        for y, x in self.selected_timeslots_coords:
+            if not verify:
                 self.timetable[y][x].plan = activity
-                self.timetableframe.timetable.draw_timeslot(y, x)
-        else:
-            for y, x in self.selected_timeslots_coords:
+            else:
                 self.timetable[y][x].verify = activity
+            if self.timetableframe.timetable != None:
                 self.timetableframe.timetable.draw_timeslot(y, x)
-        self.timetableframe.timetable.refresh()
+        if self.timetableframe.timetable != None:
+            self.timetableframe.timetable.refresh()
 
     def change_selected_timeslots(self, selected_timeslots_coords):
         self.selected_timeslots_coords = selected_timeslots_coords
