@@ -167,9 +167,9 @@ class Frame:
 
 
 class VertScrollPad(Pad):
-    def __init__(self, screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx):
+    def __init__(self, screen, padheight, padwidth, clipuly, clipulx, clipbry):
         super().__init__(
-            screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx
+            screen, padheight, padwidth, clipuly, clipulx, clipbry, padwidth - 1
         )
         self.scrollpos = 0
         self.prescroll = self.clipheight // 4
@@ -195,7 +195,7 @@ class VertScrollPad(Pad):
 
 
 class TimetablePad(VertScrollPad):
-    def __init__(self, screen, padwidth, clipuly, clipulx, clipbry, clipbrx, weekdata):
+    def __init__(self, screen, padwidth, clipuly, clipulx, clipbry, weekdata):
         self.weekdata = weekdata
         self.days = 7
         super().__init__(
@@ -205,7 +205,6 @@ class TimetablePad(VertScrollPad):
             clipuly,
             clipulx,
             clipbry,
-            clipbrx,
         )
         self.timewidth = 5
         self.slotwidth = 5
@@ -357,7 +356,6 @@ class TimetableFrame(Frame):
             self.header.clipheight,
             0,
             self.height - 1,
-            self.width - 1,
             self.weekdata,
         )
         self.add_pad(self.timetable)
@@ -369,7 +367,7 @@ class TimetableFrame(Frame):
 class ActivityTablePad(VertScrollPad):
     new_str = " + new"
 
-    def __init__(self, screen, padwidth, clipuly, clipulx, clipbry, clipbrx, weekdata):
+    def __init__(self, screen, padwidth, clipuly, clipulx, clipbry, weekdata):
         self.weekdata = weekdata
         super().__init__(
             screen,
@@ -378,7 +376,6 @@ class ActivityTablePad(VertScrollPad):
             clipuly,
             clipulx,
             clipbry,
-            clipbrx,
         )
         self.draw_activities()
         self.draw_cursor()
@@ -392,7 +389,6 @@ class ActivityTablePad(VertScrollPad):
                 self.clipuly,
                 self.clipulx,
                 self.clipbry,
-                self.clipbrx,
             )
         for i, activity in enumerate(self.weekdata.activities):
             self.pad.addstr(i, 11, activity.name)
@@ -551,7 +547,6 @@ class ActivityFrame(Frame):
             self.header.clipheight,
             0,
             self.height - 1,
-            self.width - 1,
             self.weekdata,
         )
         self.add_pad(self.activitytable)
