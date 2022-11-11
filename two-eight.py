@@ -377,6 +377,8 @@ class ActivityTablePad(VertScrollPad):
             clipulx,
             clipbry,
         )
+
+    def draw_static(self):
         self.draw_activities()
         self.draw_cursor()
 
