@@ -455,10 +455,6 @@ class ActivityTablePad(VertScrollPad):
             )
             self.draw_activities_markers()
 
-    def edit(self):
-        if self.weekdata.cursor_activity == self.padheight - 1:
-            self.create_new_activity()
-
     def delete(self):
         if (
             len(self.weekdata.activities) <= 0
@@ -478,12 +474,39 @@ class ActivityTablePad(VertScrollPad):
         self.draw_activities()
         self.select()
 
-    def create_new_activity(self):
-        self.pad.move(self.padheight - 1, 11)
-        self.pad.clrtoeol()
-        self.refresh()
+    def edit(self):
+        activity_name = self.prompt_name()
+        if activity_name != "":
+            r, g, b = self.prompt_colors()
+            if self.weekdata.cursor_activity == self.padheight - 1:
+                self.create_new_activity(activity_name, r, g, b)
+            else:
+                selected_activity = self.weekdata.activities[
+                    self.weekdata.cursor_activity
+                ]
+                selected_activity.name = activity_name
+                selected_activity.r, selected_activity.g, selected_activity.b = r, g, b
+        self.draw_activities()
+        self.select()
+
+    def prompt_name(self):
         activity_name = ""
         maxwidth = self.padwidth - 12
+        attr = (
+            (
+                curses.color_pair(
+                    self.weekdata.activities[self.weekdata.cursor_activity].color
+                )
+                + curses.A_REVERSE
+            )
+            if self.weekdata.cursor_activity < len(self.weekdata.activities)
+            else 0
+        )
+        self.pad.move(self.weekdata.cursor_activity, 11)
+        self.pad.clrtoeol()
+        self.pad.chgat(self.weekdata.cursor_activity, 0, attr)
+        self.refresh()
+
         c = self.screen.getch()
         while (
             c != curses.KEY_ENTER
@@ -494,22 +517,26 @@ class ActivityTablePad(VertScrollPad):
             if c == curses.KEY_BACKSPACE or c == ord("\b"):
                 activity_name = activity_name[:-2]
                 if len(activity_name) + 1 <= maxwidth:
-                    self.pad.addch(self.padheight - 1, 11 + len(activity_name), " ")
-            self.pad.addstr(self.padheight - 1, 11, activity_name[-maxwidth:])
+                    self.pad.addch(
+                        self.weekdata.cursor_activity,
+                        11 + len(activity_name),
+                        " ",
+                        attr,
+                    )
+            self.pad.addstr(
+                self.weekdata.cursor_activity, 11, activity_name[-maxwidth:], attr
+            )
             self.refresh()
             c = self.screen.getch()
-        if activity_name != "":
-            new_activity = Activity(
-                activity_name,
-                random.randint(0, 1000),
-                random.randint(0, 1000),
-                random.randint(0, 1000),
-            )
-            self.weekdata.add_activity(new_activity)
-            self.weekdata.cursor_activity = self.weekdata.activities.index(new_activity)
-        self.draw_activities()
-        self.select()
-        pass
+        return activity_name
+
+    def prompt_colors(self):
+        return random.randint(0, 1000), random.randint(0, 1000), random.randint(0, 1000)
+
+    def create_new_activity(self, name, r, g, b):
+        new_activity = Activity(name, r, g, b)
+        self.weekdata.add_activity(new_activity)
+        self.weekdata.cursor_activity = self.weekdata.activities.index(new_activity)
 
     def input_loop(self, c):
         if c == ord("i"):
