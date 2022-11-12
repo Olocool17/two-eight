@@ -478,14 +478,11 @@ class ActivityTablePad(VertScrollPad):
         activity_name = self.prompt_name()
         if activity_name != "":
             r, g, b = self.prompt_colors()
+            self.draw_cursor(clear=True)
             if self.weekdata.cursor_activity == self.padheight - 1:
-                self.create_new_activity(activity_name, r, g, b)
+                self.weekdata.add_activity(Activity(activity_name, r, g, b))
             else:
-                selected_activity = self.weekdata.activities[
-                    self.weekdata.cursor_activity
-                ]
-                selected_activity.name = activity_name
-                selected_activity.r, selected_activity.g, selected_activity.b = r, g, b
+                self.weekdata.edit_selected_activity(activity_name, r, g, b)
         self.draw_activities()
         self.select()
 
@@ -528,15 +525,12 @@ class ActivityTablePad(VertScrollPad):
             )
             self.refresh()
             c = self.screen.getch()
+        self.pad.move(self.weekdata.cursor_activity, 11)
+        self.pad.clrtoeol()
         return activity_name
 
     def prompt_colors(self):
         return random.randint(0, 1000), random.randint(0, 1000), random.randint(0, 1000)
-
-    def create_new_activity(self, name, r, g, b):
-        new_activity = Activity(name, r, g, b)
-        self.weekdata.add_activity(new_activity)
-        self.weekdata.cursor_activity = self.weekdata.activities.index(new_activity)
 
     def input_loop(self, c):
         if c == ord("i"):
@@ -680,6 +674,7 @@ class WeekData:
     def add_activity(self, activity: Activity):
         self.activities.append(activity)
         self.activities = sorted(self.activities, key=lambda x: x.name)
+        self.cursor_activity = self.activities.index(activity)
 
     def delete_activity(self, activity: Activity):
         for i, y in enumerate(self.timetable):
@@ -695,6 +690,13 @@ class WeekData:
         if self.timetableframe.timetable != None:
             self.timetableframe.timetable.refresh()
         self.activities.remove(activity)
+
+    def edit_selected_activity(self, name, r, g, b):
+        selected_activity = self.activities[self.cursor_activity]
+        selected_activity.name = name
+        selected_activity.r, selected_activity.g, selected_activity.b = r, g, b
+        self.activities = sorted(self.activities, key=lambda x: x.name)
+        self.cursor_activity = self.activities.index(selected_activity)
 
     def add_frames(self, timetableframe: TimetableFrame, activityframe: ActivityFrame):
         self.timetableframe = timetableframe
