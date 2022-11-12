@@ -29,7 +29,6 @@ class TwoEight:
         self.screen.leaveok(False)
         self.weekdata = WeekData.dummy(48)
         self.resize()
-        self.input_loop()
 
     def resize(self):
         self.y, self.x = self.screen.getmaxyx()
@@ -510,6 +509,10 @@ class ActivityTablePad(VertScrollPad):
             and c != 10  # also check for new line
             and c != 13  # and carriage return
         ):
+            if c == curses.KEY_RESIZE:
+                twoeight.resize()
+                c = self.screen.getch()
+                continue
             activity_name += chr(c)
             if c == curses.KEY_BACKSPACE or c == ord("\b"):
                 activity_name = activity_name[:-2]
@@ -870,8 +873,9 @@ def main(stdscr):
     log.info(f"Terminal can change colors: {curses.can_change_color()}")
     log.info(f"Amount of terminal colors: {curses.COLORS}")
     log.info(f"Amount of terminal color pairs: {curses.COLOR_PAIRS}")
-
-    TwoEight(stdscr)
+    global twoeight
+    twoeight = TwoEight(stdscr)
+    twoeight.input_loop()
 
 
 if __name__ == "__main__":
