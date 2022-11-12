@@ -814,7 +814,10 @@ class Parser:
         """Seeks to a set of specific elements in a file"""
         el = self.parse_next_line()
         while el != None and el != args:
-            pass
+            el = self.parse_next_line()
+        log.error(
+            f"Could not find seeking elements '{args}' in file {self.dbfile_path}"
+        )
 
     def reset_seek(self):
         """Resets file seeker to the beginning of the file"""
