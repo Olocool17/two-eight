@@ -486,7 +486,11 @@ class ActivityTablePad(VertScrollPad):
         self.select()
 
     def prompt_name(self):
-        activity_name = ""
+        activity_name = (
+            ""
+            if self.weekdata.cursor_activity == self.padheight - 1
+            else self.weekdata.activities[self.weekdata.cursor_activity].name
+        )
         maxwidth = self.padwidth - 12
         attr = (
             (
@@ -501,6 +505,9 @@ class ActivityTablePad(VertScrollPad):
         self.pad.move(self.weekdata.cursor_activity, 11)
         self.pad.clrtoeol()
         self.pad.chgat(self.weekdata.cursor_activity, 0, attr)
+        self.pad.addstr(
+            self.weekdata.cursor_activity, 11, activity_name[-maxwidth:], attr
+        )
         self.refresh()
 
         c = self.screen.getch()
