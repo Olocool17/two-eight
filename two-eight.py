@@ -388,6 +388,7 @@ class ActivityTablePad(VertScrollPad):
             clipulx,
             clipbry,
         )
+        self.namewidth = self.padwidth - 12
 
     def draw_static(self):
         self.draw_activities()
@@ -397,7 +398,7 @@ class ActivityTablePad(VertScrollPad):
         if self.padheight != len(self.weekdata.activities) + 1:
             self.change_height(len(self.weekdata.activities) + 1)
         for i, activity in enumerate(self.weekdata.activities):
-            self.pad.addstr(i, 11, activity.name)
+            self.pad.addstr(i, 11, activity.name[-self.namewidth :])
             self.pad.chgat(i, 0, curses.color_pair(activity.color) + curses.A_REVERSE)
         self.pad.addstr(len(self.weekdata.activities), 11, self.new_str)
         self.draw_activities_markers()
@@ -491,7 +492,6 @@ class ActivityTablePad(VertScrollPad):
             if self.weekdata.cursor_activity == self.padheight - 1
             else self.weekdata.activities[self.weekdata.cursor_activity].name
         )
-        maxwidth = self.padwidth - 12
         attr = (
             (
                 curses.color_pair(
@@ -506,7 +506,7 @@ class ActivityTablePad(VertScrollPad):
         self.pad.clrtoeol()
         self.pad.chgat(self.weekdata.cursor_activity, 0, attr)
         self.pad.addstr(
-            self.weekdata.cursor_activity, 11, activity_name[-maxwidth:], attr
+            self.weekdata.cursor_activity, 11, activity_name[-self.namewidth :], attr
         )
         self.refresh()
 
@@ -523,7 +523,7 @@ class ActivityTablePad(VertScrollPad):
             activity_name += chr(c)
             if c == curses.KEY_BACKSPACE or c == ord("\b"):
                 activity_name = activity_name[:-2]
-                if len(activity_name) + 1 <= maxwidth:
+                if len(activity_name) + 1 <= self.namewidth:
                     self.pad.addch(
                         self.weekdata.cursor_activity,
                         11 + len(activity_name),
@@ -531,7 +531,10 @@ class ActivityTablePad(VertScrollPad):
                         attr,
                     )
             self.pad.addstr(
-                self.weekdata.cursor_activity, 11, activity_name[-maxwidth:], attr
+                self.weekdata.cursor_activity,
+                11,
+                activity_name[-self.namewidth :],
+                attr,
             )
             self.refresh()
             c = self.screen.getch()
