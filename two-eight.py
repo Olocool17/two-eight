@@ -1,4 +1,3 @@
-from calendar import week
 import curses
 import random
 import datetime
