@@ -761,7 +761,7 @@ class Parser:
     def open(self):
         """Tries to load the database file"""
         try:
-            self.file = open(self.dbfile_path, mode="r", encoding="utf-8")
+            self.file = open(self.dbfile_path, mode="r+", encoding="utf-8")
         except FileNotFoundError as e:
             log.warning(
                 f'Could not find file with relative filepath "{self.dbfile_path}", original error: %s',
