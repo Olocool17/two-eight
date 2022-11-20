@@ -648,9 +648,9 @@ class Activity:
     def dummy(cls, name):
         return cls(
             name,
-            random.randrange(0, 1001),
-            random.randrange(0, 1001),
-            random.randrange(0, 1001),
+            random.randrange(0, 1000),
+            random.randrange(0, 1000),
+            random.randrange(0, 1000),
         )
 
 
