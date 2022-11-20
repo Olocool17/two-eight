@@ -539,8 +539,6 @@ class ActivityTablePad(VertScrollPad):
                     break
                 color_index += 1
             if chr(c) in "0123456789":
-                digit_index += 1
-                digit_index %= 3
                 colors_str[color_index] = (
                     colors_str[color_index][:digit_index]
                     + chr(c)
@@ -554,6 +552,8 @@ class ActivityTablePad(VertScrollPad):
                     f"R {colors_str[0]} | G {colors_str[1]} | B {colors_str[2]}",
                     attr,
                 )
+                digit_index += 1
+                digit_index %= 3
                 self.refresh()
             c = self.screen.getch()
         self.pad.move(self.cursor, 11)
