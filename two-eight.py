@@ -538,6 +538,7 @@ class ActivityTablePad(VertScrollPad):
                 if color_index == 2:
                     break
                 color_index += 1
+                digit_index = 0
             if chr(c) in "0123456789":
                 colors_str[color_index] = (
                     colors_str[color_index][:digit_index]
