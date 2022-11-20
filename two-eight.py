@@ -251,15 +251,10 @@ class TimetablePad(VertScrollPad):
             char = "░"
         if timeslot.verify != None:
             for x_paint in range(begin_x, begin_x + self.slotwidth):
-                self.pad.addch(
-                    y, x_paint, char, curses.color_pair(timeslot.verify.color_pair)
-                )
+                self.pad.addch(y, x_paint, char, timeslot.verify.color())
         if timeslot.plan != None:
             self.pad.addch(
-                y,
-                begin_x + self.slotwidth // 2,
-                char,
-                curses.color_pair(timeslot.plan.color_pair),
+                y, begin_x + self.slotwidth // 2, char, timeslot.plan.color()
             )
 
     def draw_cursor(self):
@@ -399,32 +394,24 @@ class ActivityTablePad(VertScrollPad):
             self.change_height(len(self.weekdata.activities) + 1)
         for i, activity in enumerate(self.weekdata.activities):
             self.pad.addstr(i, 11, activity.name[-self.namewidth :])
-            self.pad.chgat(i, 0, curses.color_pair(activity.color) + curses.A_REVERSE)
+            self.pad.chgat(i, 0, activity.color() + curses.A_REVERSE)
         self.pad.addstr(len(self.weekdata.activities), 11, self.new_str)
         self.draw_activities_markers()
 
     def draw_activities_markers(self):
         for i, activity in enumerate(self.weekdata.activities):
             if activity == self.weekdata.cursor_timeslot.plan:
-                self.pad.addch(
-                    i, 2, "x", curses.color_pair(activity.color) + curses.A_REVERSE
-                )
+                self.pad.addch(i, 2, "x", activity.color() + curses.A_REVERSE)
             if activity == self.weekdata.cursor_timeslot.verify:
-                self.pad.addch(
-                    i, 5, "x", curses.color_pair(activity.color) + curses.A_REVERSE
-                )
+                self.pad.addch(i, 5, "x", activity.color() + curses.A_REVERSE)
         self.refresh()
 
     def clear_activities_markers(self):
         for i, activity in enumerate(self.weekdata.activities):
             if activity == self.weekdata.cursor_timeslot.plan:
-                self.pad.addch(
-                    i, 2, " ", curses.color_pair(activity.color) + curses.A_REVERSE
-                )
+                self.pad.addch(i, 2, " ", activity.color() + curses.A_REVERSE)
             if activity == self.weekdata.cursor_timeslot.verify:
-                self.pad.addch(
-                    i, 5, " ", curses.color_pair(activity.color) + curses.A_REVERSE
-                )
+                self.pad.addch(i, 5, " ", activity.color() + curses.A_REVERSE)
 
     def draw_cursor(self, clear=False):
         char = ">" if not clear else " "
@@ -433,8 +420,7 @@ class ActivityTablePad(VertScrollPad):
                 self.cursor,
                 8,
                 char,
-                curses.color_pair(self.weekdata.activities[self.cursor].color)
-                + curses.A_REVERSE,
+                self.weekdata.activities[self.cursor].color() + curses.A_REVERSE,
             )
         else:
             self.pad.addch(self.cursor, 8, char)
@@ -468,34 +454,24 @@ class ActivityTablePad(VertScrollPad):
         self.select()
 
     def edit(self):
-        activity_name = self.prompt_name()
+        is_new = self.cursor == self.padheight - 1
+        activity = (
+            Activity("", 0, 0, 0) if is_new else self.weekdata.activities[self.cursor]
+        )
+        activity_name = self.prompt_name(activity)
         if activity_name != "":
-            r, g, b = self.prompt_colors()
+            r, g, b = self.prompt_colors(activity)
             self.draw_cursor(clear=True)
-            if self.cursor == self.padheight - 1:
-                activity = Activity(activity_name, r, g, b)
+            if is_new:
                 self.weekdata.add_activity(activity)
-            else:
-                activity = self.weekdata.activities[self.cursor]
-                self.weekdata.edit_selected_activity(activity, activity_name, r, g, b)
+            self.weekdata.edit_selected_activity(activity, activity_name, r, g, b)
             self.cursor = self.weekdata.activities.index(activity)
         self.draw_activities()
         self.select()
 
-    def prompt_name(self):
-        activity_name = (
-            ""
-            if self.cursor == self.padheight - 1
-            else self.weekdata.activities[self.cursor].name
-        )
-        attr = (
-            (
-                curses.color_pair(self.weekdata.activities[self.cursor].color)
-                + curses.A_REVERSE
-            )
-            if self.cursor < len(self.weekdata.activities)
-            else 0
-        )
+    def prompt_name(self, activity):
+        activity_name = activity.name
+        attr = activity.color() + curses.A_REVERSE
         self.pad.move(self.cursor, 11)
         self.pad.clrtoeol()
         self.pad.chgat(self.cursor, 0, attr)
@@ -534,8 +510,55 @@ class ActivityTablePad(VertScrollPad):
         self.pad.clrtoeol()
         return activity_name
 
-    def prompt_colors(self):
-        return random.randint(0, 1000), random.randint(0, 1000), random.randint(0, 1000)
+    def prompt_colors(self, activity):
+        (
+            r,
+            g,
+            b,
+        ) = (activity.r, activity.g, activity.b)
+        colors_str = [f"{r:03d}", f"{g:03d}", f"{b:03d}"]
+        attr = activity.color() + curses.A_REVERSE
+        color_index = 0
+        digit_index = 0
+        self.pad.chgat(self.cursor, 0, attr)
+        self.pad.addstr(
+            self.cursor,
+            11,
+            f"R {colors_str[0]} | G {colors_str[1]} | B {colors_str[2]}",
+            attr,
+        )
+        self.refresh()
+        c = self.screen.getch()
+        while True:
+            if c == curses.KEY_RESIZE:
+                twoeight.resize()
+                c = self.screen.getch()
+                continue
+            if c == curses.KEY_ENTER or c == 10 or c == 13:  # new line, carriage return
+                if color_index == 2:
+                    break
+                color_index += 1
+            if chr(c) in "0123456789":
+                digit_index += 1
+                digit_index %= 3
+                colors_str[color_index] = (
+                    colors_str[color_index][:digit_index]
+                    + chr(c)
+                    + colors_str[color_index][digit_index + 1 :]
+                )
+                r, g, b = map(int, colors_str)
+                activity.change_color(r, g, b)
+                self.pad.addstr(
+                    self.cursor,
+                    11,
+                    f"R {colors_str[0]} | G {colors_str[1]} | B {colors_str[2]}",
+                    attr,
+                )
+                self.refresh()
+            c = self.screen.getch()
+        self.pad.move(self.cursor, 11)
+        self.pad.clrtoeol()
+        return r, g, b
 
     def input_loop(self, c):
         if c == ord("i"):
@@ -600,8 +623,8 @@ class Activity:
         self.desc = desc
 
         curses.init_color(Activity.color_counter, r, g, b)
-        self.color = Activity.color_counter
-        curses.init_pair(Activity.color_counter, self.color, 0)
+        self.primary_color = Activity.color_counter
+        curses.init_pair(Activity.color_counter, self.primary_color, 0)
         self.color_pair = Activity.color_pair_counter
 
         Activity.color_counter = (
@@ -614,6 +637,12 @@ class Activity:
             if Activity.color_pair_counter != curses.COLOR_PAIRS - 1
             else 1
         )
+
+    def change_color(self, r, g, b):
+        curses.init_color(self.primary_color, r, g, b)
+
+    def color(self):
+        return curses.color_pair(self.color_pair)
 
     @classmethod
     def dummy(cls, name):
