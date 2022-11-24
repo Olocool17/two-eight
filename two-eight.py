@@ -427,7 +427,7 @@ class ActivityTablePad(VertScrollPad):
 
     def assign(self, verify=False):
         if self.cursor != self.padheight - 1:
-            self.clear_activities_markers()
+            self.draw_activities_markers(clear=True)
             self.weekdata.change_selected_timeslots_activity(
                 self.weekdata.activities[self.cursor], verify=verify
             )
@@ -743,8 +743,7 @@ class WeekData:
         self.selected_timeslots_coords = selected_timeslots_coords
 
     def change_cursor_timeslot(self, y, x):
-        self.activityframe.activitytable.clear_activities_markers()
-        self.cursor_timeslot_coords = (y, x)
+        self.activityframe.activitytable.draw_activities_markers(clear=True)
         self.cursor_timeslot = self.timetable[y][x]
         self.activityframe.activitytable.draw_activities_markers()
 
