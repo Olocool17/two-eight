@@ -372,9 +372,8 @@ class TimetableFrame(Frame):
 class ActivityTablePad(VertScrollPad):
     new_str = " + new"
 
-    def __init__(self, screen, padwidth, clipuly, clipulx, clipbry, weekdata):
+    def __init__(self, padwidth, clipuly, clipulx, clipbry, weekdata):
         self.weekdata = weekdata
-        self.screen = screen
         super().__init__(
             len(self.weekdata.activities) + 1,
             padwidth,
@@ -467,7 +466,7 @@ class ActivityTablePad(VertScrollPad):
         self.pad.addstr(self.cursor, 11, activity_name[-self.namewidth :], attr)
         self.refresh()
 
-        c = self.screen.getch()
+        c = twoeight.screen.getch()
         while (
             c != curses.KEY_ENTER
             and c != 10  # also check for new line
@@ -475,7 +474,7 @@ class ActivityTablePad(VertScrollPad):
         ):
             if c == curses.KEY_RESIZE:
                 twoeight.resize()
-                c = self.screen.getch()
+                c = twoeight.screen.getch()
                 continue
             activity_name += chr(c)
             if c == curses.KEY_BACKSPACE or c == ord("\b"):
@@ -494,7 +493,7 @@ class ActivityTablePad(VertScrollPad):
                 attr,
             )
             self.refresh()
-            c = self.screen.getch()
+            c = twoeight.screen.getch()
         self.pad.move(self.cursor, 11)
         self.pad.clrtoeol()
         return activity_name
@@ -517,11 +516,11 @@ class ActivityTablePad(VertScrollPad):
             attr,
         )
         self.refresh()
-        c = self.screen.getch()
+        c = twoeight.screen.getch()
         while True:
             if c == curses.KEY_RESIZE:
                 twoeight.resize()
-                c = self.screen.getch()
+                c = twoeight.screen.getch()
                 continue
             if c == curses.KEY_ENTER or c == 10 or c == 13:  # new line, carriage return
                 if color_index == 2:
@@ -545,7 +544,7 @@ class ActivityTablePad(VertScrollPad):
                 digit_index += 1
                 digit_index %= 3
                 self.refresh()
-            c = self.screen.getch()
+            c = twoeight.screen.getch()
         self.pad.move(self.cursor, 11)
         self.pad.clrtoeol()
         return r, g, b
@@ -587,7 +586,6 @@ class ActivityFrame(Frame):
         self.header = ActivityHeaderPad(self.width, 0, 0, 1, self.width - 1)
         self.add_pad(self.header)
         self.activitytable = ActivityTablePad(
-            self.screen,
             self.width,
             self.header.clipheight,
             0,
