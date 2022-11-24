@@ -216,8 +216,9 @@ class TimetablePad(VertScrollPad):
         )
         self.timewidth = 5
         self.slotwidth = 5
-        self.cursor_y, self.cursor_x = self.weekdata.cursor_timeslot_coords
+        self.cursor_y, self.cursor_x = 0, 0
         self.hold_cursor_y, self.hold_cursor_x = self.cursor_y, self.cursor_x
+        self.selected = [(self.cursor_y, self.cursor_x)]
 
     def draw_static(self):
         if (
@@ -261,17 +262,16 @@ class TimetablePad(VertScrollPad):
             self.cursor_y, self.timewidth + self.cursor_x * 6 + self.slotwidth + 1, "<"
         )
 
-    def select(self, individ=True):
+    def select(self, shift=False):
         self.cursor_y %= self.padheight
         self.cursor_x %= self.days
-        self.weekdata.change_cursor_timeslot(self.cursor_y, self.cursor_x)
         self.scroll(self.cursor_y)
         self.clear_select()
-        if individ:
+        if not shift:
             self.hold_cursor_y, self.hold_cursor_x = self.cursor_y, self.cursor_x
-            selected = [(self.cursor_y, self.cursor_x)]
+            self.selected = [(self.cursor_y, self.cursor_x)]
         else:
-            selected = [
+            self.selected = [
                 (y, x)
                 for y in range(
                     min(self.cursor_y, self.hold_cursor_y),
@@ -282,31 +282,42 @@ class TimetablePad(VertScrollPad):
                     max(self.cursor_x, self.hold_cursor_x) + 1,
                 )
             ]
-        self.weekdata.change_selected_timeslots(selected)
-        for y, x in selected:
+        for y, x in self.selected:
             self.pad.addch(y, self.timewidth + x * 6, "+")
             self.pad.addch(y, self.timewidth + x * 6 + self.slotwidth + 1, "+")
         self.draw_cursor()
         self.refresh()
+        self.weekdata.change_cursor_timeslot(self.cursor_y, self.cursor_x)
 
     def clear_select(self):
-        for y, x in self.weekdata.selected_timeslots_coords:
-            self.pad.addch(y, 5 + x * 6, " ")
-            self.pad.addch(y, 11 + x * 6, " ")
+        for y, x in self.selected:
+            self.pad.addch(y, self.timewidth + x * 6, " ")
+            self.pad.addch(y, 2 * self.timewidth + 1 + x * 6, " ")
+
+    def assign(self, verify=False):
+        for y, x in self.selected:
+            self.weekdata.assign(y, x, verify=verify)
+            self.draw_timeslot(y, x)
+        self.refresh()
+        self.weekdata.change_cursor_timeslot(self.cursor_y, self.cursor_x)
 
     def input_loop(self, c):
         if c == ord("w") or c == ord("W"):
             self.cursor_y -= 1
-            self.select(individ=bool(c - ord("W")))
+            self.select(shift=c == ord("W"))
         elif c == ord("s") or c == ord("S"):
             self.cursor_y += 1
-            self.select(individ=bool(c - ord("S")))
+            self.select(shift=c == ord("S"))
         elif c == ord("a") or c == ord("A"):
             self.cursor_x -= 1
-            self.select(individ=bool(c - ord("A")))
+            self.select(shift=c == ord("A"))
         elif c == ord("d") or c == ord("D"):
             self.cursor_x += 1
-            self.select(individ=bool(c - ord("D")))
+            self.select(shift=c == ord("D"))
+        elif c == ord("q"):
+            self.assign(verify=False)
+        elif c == ord("e"):
+            self.assign(verify=True)
 
 
 class TimetableHeaderPad(Pad):
@@ -396,13 +407,18 @@ class ActivityTablePad(VertScrollPad):
         self.pad.addstr(len(self.weekdata.activities), 11, self.new_str)
         self.draw_activities_markers()
 
-    def draw_activities_markers(self, clear=False):
-        char = "x" if not clear else " "
+    def draw_activities_markers(self, clear=True):
+        cursor_timeslot = self.weekdata.cursor_timeslot()
+        if cursor_timeslot == None:
+            return
         for i, activity in enumerate(self.weekdata.activities):
-            if activity == self.weekdata.cursor_timeslot.plan:
-                self.pad.addch(i, 2, char, activity.color() + curses.A_REVERSE)
-            if activity == self.weekdata.cursor_timeslot.verify:
-                self.pad.addch(i, 5, char, activity.color() + curses.A_REVERSE)
+            if clear:
+                self.pad.addch(i, 2, " ", activity.color() + curses.A_REVERSE)
+                self.pad.addch(i, 5, " ", activity.color() + curses.A_REVERSE)
+            if activity == cursor_timeslot.plan:
+                self.pad.addch(i, 2, "x", activity.color() + curses.A_REVERSE)
+            if activity == cursor_timeslot.verify:
+                self.pad.addch(i, 5, "x", activity.color() + curses.A_REVERSE)
         self.refresh()
 
     def draw_cursor(self, clear=False):
@@ -412,7 +428,7 @@ class ActivityTablePad(VertScrollPad):
                 self.cursor,
                 8,
                 char,
-                self.weekdata.activities[self.cursor].color() + curses.A_REVERSE,
+                self.cursor_activity().color() + curses.A_REVERSE,
             )
         else:
             self.pad.addch(self.cursor, 8, char)
@@ -422,14 +438,6 @@ class ActivityTablePad(VertScrollPad):
         self.scroll(self.cursor)
         self.draw_cursor()
         self.refresh()
-
-    def assign(self, verify=False):
-        if self.cursor != self.padheight - 1:
-            self.draw_activities_markers(clear=True)
-            self.weekdata.change_selected_timeslots_activity(
-                self.weekdata.activities[self.cursor], verify=verify
-            )
-            self.draw_activities_markers()
 
     def delete(self):
         if len(self.weekdata.activities) <= 0 or self.cursor == self.padheight - 1:
@@ -441,22 +449,20 @@ class ActivityTablePad(VertScrollPad):
         self.pad.move(self.padheight - 1, 0)
         self.pad.clrtoeol()
         self.refresh()
-        self.weekdata.delete_activity(self.weekdata.activities[self.cursor])
+        self.weekdata.delete_activity(self.cursor_activity())
         self.draw_activities()
         self.select()
 
     def edit(self):
-        is_new = self.cursor == self.padheight - 1
-        activity = (
-            Activity("", 0, 0, 0) if is_new else self.weekdata.activities[self.cursor]
-        )
+        is_new = self.cursor_activity() == None
+        activity = Activity("", 0, 0, 0) if is_new else self.cursor_activity()
         activity_name = self.prompt_name(activity)
         if activity_name != "":
             r, g, b = self.prompt_colors(activity)
             self.draw_cursor(clear=True)
             if is_new:
                 self.weekdata.add_activity(activity)
-            self.weekdata.edit_selected_activity(activity, activity_name, r, g, b)
+            self.weekdata.edit_activity(activity, activity_name, r, g, b)
             self.cursor = self.weekdata.activities.index(activity)
         self.draw_activities()
         self.select()
@@ -553,6 +559,11 @@ class ActivityTablePad(VertScrollPad):
         self.pad.clrtoeol()
         return r, g, b
 
+    def cursor_activity(self):
+        if self.cursor < len(self.weekdata.activities):
+            return self.weekdata.activities[self.cursor]
+        return None
+
     def input_loop(self, c):
         if c == ord("i"):
             self.draw_cursor(clear=True)
@@ -562,10 +573,6 @@ class ActivityTablePad(VertScrollPad):
             self.draw_cursor(clear=True)
             self.cursor += 1
             self.select()
-        elif c == ord("j"):
-            self.assign(verify=False)
-        elif c == ord("l"):
-            self.assign(verify=True)
         elif c == ord("o"):
             self.edit()
         elif c == ord("u"):
@@ -686,11 +693,7 @@ class WeekData:
     ):
         self.nr_timesegments = nr_timesegments
         self.activities = sorted(activities, key=lambda x: x.name)
-        self.selected_activity = self.activities[0]
         self.timetable = timetable
-        self.selected_timeslots_coords = [(0, 0)]
-        self.cursor_timeslot_coords = (0, 0)
-        self.cursor_timeslot = timetable[0][0]
 
         self.activityframe = None
         self.timetableframe = None
@@ -717,7 +720,7 @@ class WeekData:
             self.timetableframe.timetable.refresh()
         self.activities.remove(activity)
 
-    def edit_selected_activity(self, activity, name, r, g, b):
+    def edit_activity(self, activity, name, r, g, b):
         activity.name = name
         activity.r, activity.g, activity.b = r, g, b
         self.activities = sorted(self.activities, key=lambda x: x.name)
@@ -726,23 +729,23 @@ class WeekData:
         self.timetableframe = timetableframe
         self.activityframe = activityframe
 
-    def change_selected_timeslots_activity(self, activity: Activity, verify=False):
-        for y, x in self.selected_timeslots_coords:
-            if not verify:
-                self.timetable[y][x].plan = activity
-            else:
-                self.timetable[y][x].verify = activity
-            if self.timetableframe.timetable != None:
-                self.timetableframe.timetable.draw_timeslot(y, x)
-        if self.timetableframe.timetable != None:
-            self.timetableframe.timetable.refresh()
+    def assign(self, y, x, verify=False):
+        if self.activityframe == None:
+            return
+        activity = self.activityframe.activitytable.cursor_activity()
+        if not verify:
+            self.timetable[y][x].plan = activity
+        else:
+            self.timetable[y][x].verify = activity
 
-    def change_selected_timeslots(self, selected_timeslots_coords):
-        self.selected_timeslots_coords = selected_timeslots_coords
+    def cursor_timeslot(self):
+        if self.timetableframe == None:
+            return None
+        return self.timetable[self.timetableframe.timetable.cursor_y][
+            self.timetableframe.timetable.cursor_x
+        ]
 
     def change_cursor_timeslot(self, y, x):
-        self.activityframe.activitytable.draw_activities_markers(clear=True)
-        self.cursor_timeslot = self.timetable[y][x]
         self.activityframe.activitytable.draw_activities_markers()
 
     @classmethod
