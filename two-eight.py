@@ -398,20 +398,14 @@ class ActivityTablePad(VertScrollPad):
         self.pad.addstr(len(self.weekdata.activities), 11, self.new_str)
         self.draw_activities_markers()
 
-    def draw_activities_markers(self):
+    def draw_activities_markers(self, clear=False):
+        char = "x" if not clear else " "
         for i, activity in enumerate(self.weekdata.activities):
             if activity == self.weekdata.cursor_timeslot.plan:
-                self.pad.addch(i, 2, "x", activity.color() + curses.A_REVERSE)
+                self.pad.addch(i, 2, char, activity.color() + curses.A_REVERSE)
             if activity == self.weekdata.cursor_timeslot.verify:
-                self.pad.addch(i, 5, "x", activity.color() + curses.A_REVERSE)
+                self.pad.addch(i, 5, char, activity.color() + curses.A_REVERSE)
         self.refresh()
-
-    def clear_activities_markers(self):
-        for i, activity in enumerate(self.weekdata.activities):
-            if activity == self.weekdata.cursor_timeslot.plan:
-                self.pad.addch(i, 2, " ", activity.color() + curses.A_REVERSE)
-            if activity == self.weekdata.cursor_timeslot.verify:
-                self.pad.addch(i, 5, " ", activity.color() + curses.A_REVERSE)
 
     def draw_cursor(self, clear=False):
         char = ">" if not clear else " "
