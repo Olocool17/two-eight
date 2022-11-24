@@ -37,8 +37,8 @@ class TwoEight:
 
     def refresh(self):
         self.frames = [
-            TimetableFrame(self.screen, 0, 0, self.y - 1, 50, self.weekdata),
-            ActivityFrame(self.screen, 0, 50, self.y - 1, self.x - 2, self.weekdata),
+            TimetableFrame(self.screen, 1, 0, self.y - 2, 50, self.weekdata),
+            ActivityFrame(self.screen, 1, 50, self.y - 2, self.x - 2, self.weekdata),
         ]
         self.weekdata.add_frames(*self.frames)
         self.draw_frame()
@@ -58,10 +58,8 @@ class TwoEight:
                     frame.input_loop(c)
 
     def draw_frame(self):
-        self.screen.border(0, 0, 0, 0, 0, 0, 0, 0)
-        self.screen.addstr(
-            0, (self.x // 2) - len("two-eight") // 2, "two-eight", curses.A_REVERSE
-        )
+        self.screen.addstr(0, 0, "two-eight", curses.A_REVERSE)
+        self.screen.addch("")
 
     def exit(self):
         self.screen.clear()
