@@ -68,8 +68,7 @@ class TwoEight:
 
 
 class Pad:
-    def __init__(self, screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx):
-        self.screen = screen
+    def __init__(self, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx):
         self.pad = curses.newpad(padheight, padwidth)
         self.padheight, self.padwidth = padheight, padwidth
         self.clipuly, self.clipulx = clipuly, clipulx
@@ -163,17 +162,14 @@ class Frame:
 
 
 class VertScrollPad(Pad):
-    def __init__(self, screen, padheight, padwidth, clipuly, clipulx, clipbry):
-        super().__init__(
-            screen, padheight, padwidth, clipuly, clipulx, clipbry, padwidth - 1
-        )
+    def __init__(self, padheight, padwidth, clipuly, clipulx, clipbry):
+        super().__init__(padheight, padwidth, clipuly, clipulx, clipbry, padwidth - 1)
 
         self.scrollpos = 0
         self.prescroll = self.clipheight // 4
 
     def change_height(self, padheight):
         super().__init__(
-            self.screen,
             padheight,
             self.padwidth,
             self.clipuly,
@@ -203,11 +199,10 @@ class VertScrollPad(Pad):
 
 
 class TimetablePad(VertScrollPad):
-    def __init__(self, screen, padwidth, clipuly, clipulx, clipbry, weekdata):
+    def __init__(self, padwidth, clipuly, clipulx, clipbry, weekdata):
         self.weekdata = weekdata
         self.days = 7
         super().__init__(
-            screen,
             self.weekdata.nr_timesegments,
             padwidth,
             clipuly,
@@ -322,11 +317,9 @@ class TimetablePad(VertScrollPad):
 
 class TimetableHeaderPad(Pad):
     def __init__(
-        self, screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx, weekdata
+        self, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx, weekdata
     ):
-        super().__init__(
-            screen, padheight, padwidth, clipuly, clipulx, clipbry, clipbrx
-        )
+        super().__init__(padheight, padwidth, clipuly, clipulx, clipbry, clipbrx)
         self.weekdata = weekdata
 
     def draw_static(self):
@@ -354,7 +347,6 @@ class TimetableFrame(Frame):
             brx,
         )
         self.header = TimetableHeaderPad(
-            self.screen,
             3,
             self.width,
             0,
@@ -365,7 +357,6 @@ class TimetableFrame(Frame):
         )
         self.add_pad(self.header)
         self.timetable = TimetablePad(
-            self.screen,
             self.width,
             self.header.clipheight,
             0,
@@ -383,8 +374,8 @@ class ActivityTablePad(VertScrollPad):
 
     def __init__(self, screen, padwidth, clipuly, clipulx, clipbry, weekdata):
         self.weekdata = weekdata
+        self.screen = screen
         super().__init__(
-            screen,
             len(self.weekdata.activities) + 1,
             padwidth,
             clipuly,
@@ -580,8 +571,8 @@ class ActivityTablePad(VertScrollPad):
 
 
 class ActivityHeaderPad(Pad):
-    def __init__(self, screen, padwidth, clipuly, clipulx, clipbry, clipbrx):
-        super().__init__(screen, 2, padwidth, clipuly, clipulx, clipbry, clipbrx)
+    def __init__(self, padwidth, clipuly, clipulx, clipbry, clipbrx):
+        super().__init__(2, padwidth, clipuly, clipulx, clipbry, clipbrx)
 
     def draw_static(self):
         self.pad.addch(0, 2, "p")
@@ -593,9 +584,7 @@ class ActivityFrame(Frame):
     def __init__(self, screen, uly, ulx, bry, brx, weekdata):
         self.weekdata = weekdata
         super().__init__(screen, uly, ulx, bry, brx)
-        self.header = ActivityHeaderPad(
-            self.screen, self.width, 0, 0, 1, self.width - 1
-        )
+        self.header = ActivityHeaderPad(self.width, 0, 0, 1, self.width - 1)
         self.add_pad(self.header)
         self.activitytable = ActivityTablePad(
             self.screen,
