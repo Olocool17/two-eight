@@ -23,48 +23,75 @@ log.info("Logger initialised")
 class TwoEight:
     def __init__(self, stdscr):
         self.screen = stdscr
-        curses.use_default_colors()
-        curses.curs_set(0)
-        self.screen.leaveok(False)
-        self.weekdata = WeekData.dummy(48)
-        self.resize()
+        first_weekdata = WeekData.dummy(48)
+        self.weekdatas = {(first_weekdata.year, first_weekdata.week): first_weekdata}
+        self.max_y, self.max_x = self.screen.getmaxyx()
+        curses.resize_term(self.max_y, self.max_x)
+        self.header = HeaderPad(self.max_x)
+        self.tabs = [
+            WeekTab(self.screen, 1, 0, self.max_y - 1, self.max_x - 1, first_weekdata)
+        ]
 
     def resize(self):
-        self.y, self.x = self.screen.getmaxyx()
+        self.max_y, self.max_x = self.screen.getmaxyx()
         self.screen.clear()
-        curses.resize_term(self.y, self.x)
-        self.refresh()
-
-    def refresh(self):
-        self.frames = [
-            TimetableFrame(self.screen, 1, 0, self.y - 2, 50, self.weekdata),
-            ActivityFrame(self.screen, 1, 50, self.y - 2, self.x - 2, self.weekdata),
-        ]
-        self.weekdata.add_frames(*self.frames)
-        self.draw_frame()
-        self.screen.refresh()
-        for frame in self.frames:
-            frame.refresh()
+        curses.resize_term(self.max_y, self.max_x)
+        self.header = HeaderPad(self.max_x)
+        for tab in self.tabs:
+            tab.resize(
+                1,
+                0,
+                self.max_y - 1,
+                self.max_x - 1,
+            )
 
     def input_loop(self):
+        self.tabs_i = 0
         while True:
             c = self.screen.getch()
             if c == curses.KEY_RESIZE:
                 self.resize()
+            elif c == ord("\t"):
+                self.tabs_i = (self.tabs_i + 1) % len(self.tabs)
             elif c == 3:  # Crtl + C
                 self.exit()
             else:
-                for frame in self.frames:
-                    frame.input_loop(c)
-
-    def draw_frame(self):
-        self.screen.addstr(0, 0, "two-eight", curses.A_REVERSE)
-        self.screen.addch("")
+                self.tabs[self.tabs_i].input_loop(c)
 
     def exit(self):
         self.screen.clear()
         self.screen.refresh()
         raise CleanExit
+
+
+class WeekTab:
+    def __init__(self, screen, uly, ulx, bry, brx, weekdata):
+        self.uly, self.ulx, self.bry, self.brx = uly, ulx, bry, brx
+        self.screen = screen
+        self.frames = {}
+        self.weekdata = weekdata
+        self.load_weekdata(weekdata)
+
+    def resize(self, uly, ulx, bry, brx):
+        self.uly, self.ulx, self.bry, self.brx = uly, ulx, bry, brx
+        self.load_weekdata(self.weekdata)
+
+    def load_weekdata(self, weekdata):
+        self.weekdata = weekdata
+        self.frames = [
+            TimetableFrame(self.screen, self.uly, self.ulx, self.bry, 50),
+            ActivityFrame(self.screen, self.uly, 50, self.bry, self.brx - 1),
+        ]
+        for frame in self.frames:
+            frame.load_weekdata(weekdata)
+        self.screen.refresh()
+        for frame in self.frames:
+            frame.start()
+            frame.refresh()
+
+    def input_loop(self, c):
+        for frame in self.frames:
+            frame.input_loop(c)
 
 
 class Pad:
@@ -89,6 +116,17 @@ class Pad:
             self.clipbry,
             self.clipbrx,
         )
+
+
+class HeaderPad(Pad):
+    def __init__(self, width):
+        super().__init__(1, width, 0, 0, 0, width - 1)
+        self.draw()
+
+    def draw(self):
+        self.pad.addstr(0, 0, "two-eight", curses.A_REVERSE)
+        self.pad.addch("")
+        self.refresh()
 
 
 class Frame:
@@ -337,15 +375,11 @@ class TimetableHeaderPad(Pad):
 
 
 class TimetableFrame(Frame):
-    def __init__(self, screen, uly, ulx, bry, brx, weekdata):
+    def load_weekdata(self, weekdata):
         self.weekdata = weekdata
-        super().__init__(
-            screen,
-            uly,
-            ulx,
-            bry,
-            brx,
-        )
+        weekdata.timetableframe = self
+
+    def start(self):
         self.header = TimetableHeaderPad(
             3,
             self.width,
@@ -353,7 +387,7 @@ class TimetableFrame(Frame):
             0,
             2,
             self.width - 1,
-            weekdata,
+            self.weekdata,
         )
         self.add_pad(self.header)
         self.timetable = TimetablePad(
@@ -580,9 +614,14 @@ class ActivityHeaderPad(Pad):
 
 
 class ActivityFrame(Frame):
-    def __init__(self, screen, uly, ulx, bry, brx, weekdata):
+    #    def __init__(self, screen, uly, ulx, bry, brx):
+    #        super().__init__(screen, uly, ulx, bry, brx)
+
+    def load_weekdata(self, weekdata):
         self.weekdata = weekdata
-        super().__init__(screen, uly, ulx, bry, brx)
+        weekdata.activityframe = self
+
+    def start(self):
         self.header = ActivityHeaderPad(self.width, 0, 0, 1, self.width - 1)
         self.add_pad(self.header)
         self.activitytable = ActivityTablePad(
@@ -687,6 +726,10 @@ class WeekData:
         self.date = date
         if date == None:
             self.date = datetime.date.fromisocalendar(year, week, 1)
+            self.year, self.week = year, week
+        else:
+            self.date = date
+            self.year, self.week, _ = date.isocalendar()
 
     def add_activity(self, activity: Activity):
         self.activities.append(activity)
@@ -711,10 +754,6 @@ class WeekData:
         activity.name = name
         activity.r, activity.g, activity.b = r, g, b
         self.activities = sorted(self.activities, key=lambda x: x.name)
-
-    def add_frames(self, timetableframe: TimetableFrame, activityframe: ActivityFrame):
-        self.timetableframe = timetableframe
-        self.activityframe = activityframe
 
     def assign(self, y, x, verify=False):
         if self.activityframe == None:
@@ -883,6 +922,9 @@ def main(stdscr):
     log.info(f"Terminal can change colors: {curses.can_change_color()}")
     log.info(f"Amount of terminal colors: {curses.COLORS}")
     log.info(f"Amount of terminal color pairs: {curses.COLOR_PAIRS}")
+    curses.use_default_colors()
+    curses.curs_set(0)
+    stdscr.leaveok(False)
     global twoeight
     twoeight = TwoEight(stdscr)
     twoeight.input_loop()
