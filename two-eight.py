@@ -23,14 +23,17 @@ log.info("Logger initialised")
 class TwoEight:
     def __init__(self, stdscr):
         self.screen = stdscr
+
+    def start(self):
         first_weekdata = WeekData.dummy(48)
         self.weekdatas = {(first_weekdata.year, first_weekdata.week): first_weekdata}
         self.max_y, self.max_x = self.screen.getmaxyx()
         curses.resize_term(self.max_y, self.max_x)
-        self.header = HeaderPad(self.max_x)
         self.tabs = [
             WeekTab(self.screen, 1, 0, self.max_y - 1, self.max_x - 1, first_weekdata)
         ]
+        self.tabs_i = 0
+        self.header = HeaderPad(self.max_x)
 
     def resize(self):
         self.max_y, self.max_x = self.screen.getmaxyx()
@@ -45,14 +48,19 @@ class TwoEight:
                 self.max_x - 1,
             )
 
+    def switch_tab(self):
+        self.tabs_i = (self.tabs_i + 1) % len(self.tabs)
+        self.header.refresh()
+
+    def current_tab(self):
+        return self.tabs[self.tabs_i]
     def input_loop(self):
-        self.tabs_i = 0
         while True:
             c = self.screen.getch()
             if c == curses.KEY_RESIZE:
                 self.resize()
             elif c == ord("\t"):
-                self.tabs_i = (self.tabs_i + 1) % len(self.tabs)
+                self.switch_tab()
             elif c == 3:  # Crtl + C
                 self.exit()
             else:
@@ -121,12 +129,19 @@ class Pad:
 class HeaderPad(Pad):
     def __init__(self, width):
         super().__init__(1, width, 0, 0, 0, width - 1)
-        self.draw()
-
-    def draw(self):
+        self.refresh()
+    
+    def refresh(self):
         self.pad.addstr(0, 0, "two-eight", curses.A_REVERSE)
         self.pad.addch("")
-        self.refresh()
+        tab = twoeight.current_tab()
+        if isinstance(tab, WeekTab):
+            self.draw_weektab(tab)
+        super().refresh()
+
+    def draw_weektab(self, tab):
+        self.pad.addch(" ")
+        self.pad.addstr(f"week {tab.weekdata.year}|{tab.weekdata.week}")
 
 
 class Frame:
@@ -614,9 +629,6 @@ class ActivityHeaderPad(Pad):
 
 
 class ActivityFrame(Frame):
-    #    def __init__(self, screen, uly, ulx, bry, brx):
-    #        super().__init__(screen, uly, ulx, bry, brx)
-
     def load_weekdata(self, weekdata):
         self.weekdata = weekdata
         weekdata.activityframe = self
@@ -927,6 +939,7 @@ def main(stdscr):
     stdscr.leaveok(False)
     global twoeight
     twoeight = TwoEight(stdscr)
+    twoeight.start()
     twoeight.input_loop()
 
 
