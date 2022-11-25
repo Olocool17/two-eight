@@ -307,7 +307,7 @@ class VertScrollPad(Pad):
         self.scroll_variable = select
         prescroll = self.clipheight // 4
         select_scroll_delta_lower = select - prescroll
-        select_scroll_delta_upper = select - self.clipheight + prescroll
+        select_scroll_delta_upper = select - self.clipheight + prescroll + 1
         if select_scroll_delta_upper > self.scrollpos:
             self.scrollpos = select_scroll_delta_upper
         elif select_scroll_delta_lower < self.scrollpos:
