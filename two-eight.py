@@ -251,7 +251,7 @@ class TimetablePad(VertScrollPad):
         self.slotwidth = 5
         self.cursor_y, self.cursor_x = 0, 0
         self.hold_cursor_y, self.hold_cursor_x = self.cursor_y, self.cursor_x
-        self.selected = [(self.cursor_y, self.cursor_x)]
+        self.selected = ((self.cursor_y, self.cursor_x),)
 
     def draw_static(self):
         if (
@@ -302,9 +302,9 @@ class TimetablePad(VertScrollPad):
         self.clear_select()
         if not shift:
             self.hold_cursor_y, self.hold_cursor_x = self.cursor_y, self.cursor_x
-            self.selected = [(self.cursor_y, self.cursor_x)]
+            self.selected = ((self.cursor_y, self.cursor_x),)
         else:
-            self.selected = [
+            self.selected = tuple(
                 (y, x)
                 for y in range(
                     min(self.cursor_y, self.hold_cursor_y),
@@ -314,7 +314,7 @@ class TimetablePad(VertScrollPad):
                     min(self.cursor_x, self.hold_cursor_x),
                     max(self.cursor_x, self.hold_cursor_x) + 1,
                 )
-            ]
+            )
         for y, x in self.selected:
             self.pad.addch(y, self.timewidth + x * 6, "+")
             self.pad.addch(y, self.timewidth + x * 6 + self.slotwidth + 1, "+")
