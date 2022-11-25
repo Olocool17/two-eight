@@ -625,14 +625,14 @@ class ActivityTablePad(VertScrollPad):
                     )
                     r, g, b = map(int, colors_str)
                     activity.change_color(r, g, b)
+                    digit_index += 1
+                    digit_index %= 3
             self.pad.addstr(
                 self.cursor,
                 11,
                 f"R {colors_str[0]} | G {colors_str[1]} | B {colors_str[2]}",
                 attr,
             )
-            digit_index += 1
-            digit_index %= 3
             self.refresh()
             c = twoeight.screen.getch()
         self.pad.move(self.cursor, 11)
