@@ -54,6 +54,7 @@ class TwoEight:
 
     def current_tab(self):
         return self.tabs[self.tabs_i]
+
     def input_loop(self):
         while True:
             c = self.screen.getch()
@@ -130,7 +131,7 @@ class HeaderPad(Pad):
     def __init__(self, width):
         super().__init__(1, width, 0, 0, 0, width - 1)
         self.refresh()
-    
+
     def refresh(self):
         self.pad.addstr(0, 0, "two-eight", curses.A_REVERSE)
         self.pad.addch("")
