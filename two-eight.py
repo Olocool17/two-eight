@@ -1,10 +1,12 @@
 import curses
-import random
 import datetime
 import locale
 import logging
 
-random.seed()
+from random import randrange, seed
+from functools import wraps
+
+seed()
 
 locale.setlocale(locale.LC_ALL, "")
 
@@ -23,7 +25,21 @@ timewidth = 5
 slotwidth = 5
 
 
+class Input:
+    controls = {}
+
+    def on_key(self, c):
+        self.c = c
+        return self
+
+    def __call__(self, func):
+        self.controls.update({self.c: func})
+        return func
+
+
 class TwoEight:
+    input = Input()
+
     def __init__(self, stdscr):
         self.screen = stdscr
 
@@ -38,6 +54,15 @@ class TwoEight:
         self.tabs_i = 0
         self.header = HeaderPad()
 
+    """     @staticmethod
+    def on_input(c):
+        def decorated(func):
+            controls.update({c: func})
+            return func
+
+        return decorated """
+
+    @input.on_key(curses.KEY_RESIZE)
     def resize(self):
         self.max_y, self.max_x = self.screen.getmaxyx()
         self.screen.clear()
@@ -52,6 +77,7 @@ class TwoEight:
                 self.max_x - 2,
             )
 
+    @input.on_key(ord("\t"))
     def switch_tab(self):
         self.tabs_i = (self.tabs_i + 1) % len(self.tabs)
         self.header.refresh()
@@ -59,22 +85,20 @@ class TwoEight:
     def current_tab(self):
         return self.tabs[self.tabs_i]
 
-    def input_loop(self):
-        while True:
-            c = self.screen.getch()
-            if c == curses.KEY_RESIZE:
-                self.resize()
-            elif c == ord("\t"):
-                self.switch_tab()
-            elif c == 3:  # Crtl + C
-                self.exit()
-            else:
-                self.tabs[self.tabs_i].input_loop(c)
-
+    @input.on_key(3)  # Crtl + C
     def exit(self):
         self.screen.clear()
         self.screen.refresh()
         raise CleanExit
+
+    def input_loop(self):
+        while True:
+            c = self.screen.getch()
+            try:
+                self.input.controls[c](self)
+                continue
+            except KeyError:
+                self.tabs[self.tabs_i].input_loop(c)
 
 
 class WeekTab:
@@ -721,9 +745,9 @@ class Activity:
     def dummy(cls, name):
         return cls(
             name,
-            random.randrange(0, 1000),
-            random.randrange(0, 1000),
-            random.randrange(0, 1000),
+            randrange(0, 1000),
+            randrange(0, 1000),
+            randrange(0, 1000),
         )
 
 
@@ -831,8 +855,8 @@ class WeekData:
             [
                 [
                     Timeslot(
-                        activities[random.randrange(0, nr_activities)],
-                        activities[random.randrange(0, nr_activities)],
+                        activities[randrange(0, nr_activities)],
+                        activities[randrange(0, nr_activities)],
                     )
                     for j in range(7)
                 ]
