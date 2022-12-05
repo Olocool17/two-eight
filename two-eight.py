@@ -79,13 +79,13 @@ class Pad:
         self.parent = parent
         self.uly, self.ulx = uly, ulx
         self.init_pad = init_pad
-        self._height = height if height != None else self._height
-        self._width = width if width != None else self._width
+        self._height = height if height is not None else self._height
+        self._width = width if width is not None else self._width
         self.pad = curses.newpad(self.height + 1, self.width) if init_pad else None
         Pad.resize(self)
 
     def resize(self):
-        if self.parent != None:
+        if self.parent is not None:
             if (
                 self.stretch_height
             ):  # stretch the height of the pad to the parent's remaining height
@@ -170,7 +170,7 @@ class Pad:
         pass
 
     def root(self):
-        return self.parent.root() if self.parent != None else self
+        return self.parent.root() if self.parent is not None else self
 
     def refresh(self):
         if self.refreshable:
@@ -491,10 +491,10 @@ class TimetablePad(VertScrollPad):
             char = "█"
         else:
             char = "░"
-        if timeslot.verify != None:
+        if timeslot.verify is not None:
             for x_paint in range(begin_x, begin_x + slotwidth):
                 self.pad.addch(y, x_paint, char, timeslot.verify.color())
-        if timeslot.plan != None:
+        if timeslot.plan is not None:
             self.pad.addch(y, begin_x + slotwidth // 2, char, timeslot.plan.color())
 
     def draw_selected(self, clear=False):
@@ -924,7 +924,7 @@ class Parser:
 
     def close(self):
         """Closes the database file"""
-        if self.file != None:
+        if self.file is not None:
             self.file.close()
 
     @staticmethod
@@ -997,7 +997,7 @@ class Parser:
     def seek_for(self, *args):
         """Seeks to a set of specific elements in a file"""
         el = self.parse_next_line()
-        while el != None and el != args:
+        while el is not None and el != args:
             el = self.parse_next_line()
         log.error(
             f"Could not find seeking elements '{args}' in file {self.dbfile_path}"
