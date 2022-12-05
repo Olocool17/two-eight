@@ -4,7 +4,6 @@ import locale
 import logging
 
 from random import randrange, seed
-from functools import wraps
 
 seed()
 
@@ -26,293 +25,415 @@ slotwidth = 5
 
 
 class Input:
-    controls = {}
+    def __init__(self):
+        self.controls = {}
+        self.controller = None
+        self.fallback = tuple()
 
-    def on_key(self, c):
-        self.c = c
+    def on_key(self, *args):
+        self.c = args
         return self
 
+    def install(self, controller, fallback: tuple = ()):
+        self.controller = controller
+        self.fallback = fallback
+
+    def process(self, c):
+        if self.controller == None:
+            log.warning(
+                f"Could not process input '{c}' for input {self.__class__.__name__} because it does not have a controller installed."
+            )
+            return
+        try:
+            self.c = c
+            self.controls[c](self.controller)
+        except KeyError:
+            for e in self.fallback:
+                try:
+                    e.input.process(c)
+                except AttributeError:
+                    log.warning(
+                        f"Could not process input '{c}' for {e.__class__.__name__} because it does not have an Input."
+                    )
+                    continue
+
     def __call__(self, func):
-        self.controls.update({self.c: func})
+        for c in self.c:
+            if c in self.controls.keys():
+                log.warning(
+                    f"Key '{c}' is already bound to function '{self.controls[c]}'. This will be overwritten with function '{func}'."
+                )
+            self.controls.update({c: func})
         return func
 
 
-class TwoEight:
-    input = Input()
-
-    def __init__(self, stdscr):
-        self.screen = stdscr
-
-    def start(self):
-        first_weekdata = WeekData.dummy(48)
-        self.weekdatas = {(first_weekdata.year, first_weekdata.week): first_weekdata}
-        self.max_y, self.max_x = self.screen.getmaxyx()
-        curses.resize_term(self.max_y, self.max_x)
-        self.tabs = [
-            WeekTab(self.screen, 1, 0, self.max_y - 1, self.max_x - 2, first_weekdata)
-        ]
-        self.tabs_i = 0
-        self.header = HeaderPad()
-
-    """     @staticmethod
-    def on_input(c):
-        def decorated(func):
-            controls.update({c: func})
-            return func
-
-        return decorated """
-
-    @input.on_key(curses.KEY_RESIZE)
-    def resize(self):
-        self.max_y, self.max_x = self.screen.getmaxyx()
-        self.screen.clear()
-        curses.resize_term(self.max_y, self.max_x)
-        self.header.pad_resize(width=self.max_x)
-        self.header.refresh()
-        for tab in self.tabs:
-            tab.resize(
-                1,
-                0,
-                self.max_y - 1,
-                self.max_x - 2,
-            )
-
-    @input.on_key(ord("\t"))
-    def switch_tab(self):
-        self.tabs_i = (self.tabs_i + 1) % len(self.tabs)
-        self.header.refresh()
-
-    def current_tab(self):
-        return self.tabs[self.tabs_i]
-
-    @input.on_key(3)  # Crtl + C
-    def exit(self):
-        self.screen.clear()
-        self.screen.refresh()
-        raise CleanExit
-
-    def input_loop(self):
-        while True:
-            c = self.screen.getch()
-            try:
-                self.input.controls[c](self)
-                continue
-            except KeyError:
-                self.tabs[self.tabs_i].input_loop(c)
-
-
-class WeekTab:
-    def __init__(self, screen, uly, ulx, bry, brx, weekdata):
-        self.uly, self.ulx, self.bry, self.brx = uly, ulx, bry, brx
-        self.screen = screen
-        self.weekdata = weekdata
-        self.load_weekdata(weekdata)
-
-    def resize(self, uly, ulx, bry, brx):
-        self.uly, self.ulx, self.bry, self.brx = uly, ulx, bry, brx
-        self.frames[0].resize(self.uly, self.ulx, self.bry, 50)
-        self.frames[1].resize(self.uly, 50, self.bry, self.brx)
-        self.screen.refresh()
-        for frame in self.frames:
-            frame.refresh()
-
-    def load_weekdata(self, weekdata):
-        self.weekdata = weekdata
-        self.frames = [
-            TimetableFrame(self.screen, self.uly, self.ulx, self.bry, 50),
-            ActivityFrame(self.screen, self.uly, 50, self.bry, self.brx),
-        ]
-        for frame in self.frames:
-            frame.load_weekdata(weekdata)
-        self.screen.refresh()
-        for frame in self.frames:
-            frame.start()
-            frame.refresh()
-
-    def input_loop(self, c):
-        for frame in self.frames:
-            frame.input_loop(c)
-
-
 class Pad:
-    def __init__(
-        self, height, width, clip=None, stretch_height=False, stretch_width=False
-    ):
-        self.padheight, self.padwidth = height, width
-        self.clipheight, self.clipwidth = height, width
-        self.frame = None
-        self.stretch_height, self.stretch_width = stretch_height, stretch_width
-        self.pad_resize(height=height, width=width, clip=clip)
+    _height = 0
+    _width = 0
+    stretch_height = False
+    stretch_width = False
 
-    def pad_resize(self, height=None, width=None, clip=None):
-        self.padheight = height if height != None else self.padheight
-        self.padwidth = width if width != None else self.padwidth
-        self.pad = curses.newpad(self.padheight, self.padwidth)
-        if clip != None:
-            self.clip_set(*clip)
-        elif self.frame == None:
-            self.clip_set(0, 0, self.padheight - 1, self.padwidth - 1)
+    refreshable = False
 
-    def clip_set(self, clipuly, clipulx, clipbry, clipbrx):
-        self.clipuly, self.clipulx = clipuly, clipulx
-        self.clipbry, self.clipbrx = clipbry, clipbrx
+    def __init__(self, uly, ulx, height=None, width=None, parent=None, init_pad=True):
+        self.parent = parent
+        self.uly, self.ulx = uly, ulx
+        self.init_pad = init_pad
+        self._height = height if height != None else self._height
+        self._width = width if width != None else self._width
+        self.pad = curses.newpad(self.height + 1, self.width) if init_pad else None
+        Pad.resize(self)
+
+    def resize(self):
+        if self.parent != None:
+            if (
+                self.stretch_height
+            ):  # stretch the height of the pad to the parent's remaining height
+                self.height = (
+                    self.parent.height
+                    - sum(e.height for e in self.parent.pads)
+                    + (self.height if self in self.parent.pads else 0)
+                    if isinstance(self.parent, VertFrame)
+                    else self.parent.height
+                ) - 2 * self.parent.bordered
+            if (
+                self.stretch_width
+            ):  # stretch the width of the pad to the parent's remaining width
+                self.width = (
+                    (
+                        self.parent.width
+                        - sum(e.width for e in self.parent.pads)
+                        + (self.width if self in self.parent.pads else 0)
+                    )
+                    if isinstance(self.parent, HorzFrame)
+                    else self.parent.width
+                ) - 2 * self.parent.bordered
+
+            self.bry = min(
+                self.uly + self.height - 1,
+                self.parent.height - 1 - 1 * self.parent.bordered,
+                *(e.uly - 1 for e in self.parent.pads if e.uly > self.uly),
+            )
+            self.brx = min(
+                self.ulx + self.width - 1,
+                self.parent.width - 1 - 1 * self.parent.bordered,
+                *(e.ulx - 1 for e in self.parent.pads if e.ulx > self.ulx),
+            )
+            self.clipuly = self.uly + self.parent.clipuly
+            self.clipulx = self.ulx + self.parent.clipulx
+            self.clipbry = self.bry + self.parent.clipuly
+            self.clipbrx = self.brx + self.parent.clipulx
+        else:
+            self.bry, self.brx = self.uly + self.height - 1, self.ulx + self.width - 1
+            self.clipuly, self.clipulx = self.uly, self.ulx
+            self.clipbry, self.clipbrx = self.bry, self.brx
+
         self.clipheight = self.clipbry - self.clipuly + 1
         self.clipwidth = self.clipbrx - self.clipulx + 1
+        if self.height <= 0 or self.width <= 0:
+            log.warning(
+                f"{self.__class__.__name__} has no height '{self.height}' and/or width '{self.width}' set. This is most likely a mistake."
+            )
+        if self.clipheight <= 0 or self.clipwidth <= 0:
+            log.warning(
+                f"Cannot draw {self.__class__.__name__} with absolute upper left corner ({self.clipuly, self.clipulx}) and absolute bottom right corner ({self.clipbry, self.clipbrx}) because width or height is zero or negative.  "
+            )
+            self.refreshable = False
+        else:
+            self.refreshable = True
+
+    @property
+    def height(self):
+        return self._height
+
+    @height.setter
+    def height(self, val):
+        if self._height != val:
+            self._height = val
+            self.pad = (
+                curses.newpad(self.height + 1, self.width) if self.init_pad else None
+            )
+
+    @property
+    def width(self):
+        return self._width
+
+    @width.setter
+    def width(self, val):
+        if self._width != val:
+            self._width = val
+            self.pad = (
+                curses.newpad(self.height + 1, self.width) if self.init_pad else None
+            )
 
     def draw_static(self):
         pass
 
-    def resize(self):
-        pass
+    def root(self):
+        return self.parent.root() if self.parent != None else self
 
     def refresh(self):
-        self.pad.refresh(
-            0,
-            0,
-            self.clipuly,
-            self.clipulx,
-            self.clipbry,
-            self.clipbrx,
+        if self.refreshable:
+            self.pad.refresh(
+                0,
+                0,
+                self.clipuly,
+                self.clipulx,
+                self.clipbry,
+                self.clipbrx,
+            )
+
+
+class Frame(Pad):
+    def __init__(self, uly, ulx, height=None, width=None, parent=None, bordered=False):
+        # if not bordered, curses pad is not required
+        self.pads = []
+        self.bordered = bordered
+        Pad.__init__(
+            self, uly, ulx, height=height, width=width, parent=parent, init_pad=bordered
         )
+
+    def create(
+        self, cls, uly, ulx, *args, height=None, width=None, bordered=False, **kwargs
+    ):
+        if issubclass(cls, Frame):
+            new_frame = object.__new__(cls, *args, **kwargs)
+            Frame.__init__(
+                new_frame,
+                uly,
+                ulx,
+                parent=self,
+                height=height,
+                width=width,
+                bordered=bordered,
+            )
+            if cls.__init__ is not Frame.__init__:
+                cls.__init__(new_frame, *args, **kwargs)
+            self.pads.append(new_frame)
+            new_frame.draw_static()
+            return new_frame
+        elif issubclass(cls, Pad):
+            new_pad = object.__new__(cls, *args, **kwargs)
+            Pad.__init__(new_pad, uly, ulx, parent=self, height=height, width=width)
+            if cls.__init__ is not Pad.__init__:
+                cls.__init__(new_pad, *args, **kwargs)
+            self.pads.append(new_pad)
+            new_pad.draw_static()
+            return new_pad
+        log.error(
+            f"Could not add '{cls.__name__}' to frame '{self.__class__.__name__}' because it is neither a {Frame.__name__} nor a {Pad.__name__}."
+        )
+
+    def draw_static(self):
+        if self.bordered:
+            self.draw_cornerless_frame()
+
+    def refresh(self):
+        if self.bordered:
+            Pad.refresh(self)
+        for child in self.pads:
+            child.refresh()
+
+    def resize(self):
+        Pad.resize(self)
+        for child in self.pads:
+            child.resize()
+        self.draw_static()
+
+    def draw_cornerless_frame(self):
+        if not self.bordered:
+            return
+        try:
+            self.pad
+        except AttributeError:
+            log.error(
+                f"Frame '{self.__class__.__name__} could not draw frame because it does not have a curses pad associated with it.'"
+            )
+            return
+        # # is a placeholder corner character
+        self.pad.addch(0, 0, 35)  # paint # in
+        self.pad.addch(0, self.width - 1, 35)  # #
+        self.pad.addch(self.height - 1, 0, 35)  # #
+        self.pad.addch(self.height - 1, self.width - 1, 35)  # #
+        # left/right side
+        for y in range(1, self.height - 1):
+            self.pad.addch(y, 0, "│")
+            self.pad.addch(y, self.width - 1, "│")
+        # top/bottom side
+        for x in range(1, self.width - 1):
+            self.pad.addch(0, x, "─")
+            self.pad.addch(self.height - 1, x, "─")
+
+
+class VertFrame(Frame):
+    def create(self, cls, *args, height=None, width=None, bordered=False, **kwargs):
+        return Frame.create(
+            self,
+            cls,
+            self.pads[-1].bry + 1 if len(self.pads) > 0 else 1 * self.bordered,
+            1 * self.bordered,
+            *args,
+            height=height,
+            width=width,
+            bordered=bordered,
+            **kwargs,
+        )
+
+
+class HorzFrame(Frame):
+    def create(self, cls, *args, height=None, width=None, bordered=False, **kwargs):
+        return Frame.create(
+            self,
+            cls,
+            1 * self.bordered,
+            self.pads[-1].brx + 1 if len(self.pads) > 0 else 1 * self.bordered,
+            *args,
+            height=height,
+            width=width,
+            bordered=bordered,
+            **kwargs,
+        )
+
+
+class TwoEight(VertFrame):
+    input = Input()
+
+    def __init__(self, screen):
+        self.screen = screen
+        first_weekdata = WeekData.dummy(48)
+        self.weekdatas = {(first_weekdata.year, first_weekdata.week): first_weekdata}
+        self.header = self.create(HeaderPad)
+        self.tabs = [self.create(WeekTab, first_weekdata)]
+        self.current_tab = self.tabs[-1]
+        self.switch_tab()
+
+    @input.on_key(ord("\t"))
+    def switch_tab(self):
+        self.current_tab = self.tabs[
+            (self.tabs.index(self.current_tab) + 1) % len(self.tabs)
+        ]
+        self.header.draw_tab(self.current_tab)
+        self.input.install(self, fallback=(self.current_tab,))
+
+    @input.on_key(curses.KEY_RESIZE)
+    def resize_term(self):
+        resize_term(self)
+
+    @input.on_key(3)  # Crtl + C
+    def exit(self):
+        log.info("Exiting two-eight. Goodnight, ladies and gentlemen.")
+        raise CleanExit
 
 
 class HeaderPad(Pad):
-    def __init__(self):
-        super().__init__(1, 30)
-        self.refresh()
+    _height = 1
+    _width = 30
 
-    def refresh(self):
+    def draw_static(self):
         self.pad.addstr(0, 0, "two-eight", curses.A_REVERSE)
         self.pad.addch("")
-        tab = twoeight.current_tab()
+
+    def draw_tab(self, tab):
         if isinstance(tab, WeekTab):
-            self.draw_weektab(tab)
-        super().refresh()
-
-    def draw_weektab(self, tab):
-        self.pad.addch(" ")
-        self.pad.addstr(f"week {tab.weekdata.year}|{tab.weekdata.week}")
+            self.pad.addch(" ")
+            self.pad.addstr(f"week {tab.weekdata.year}|{tab.weekdata.week}")
 
 
-class Frame:
-    def __init__(self, screen, uly, ulx, bry, brx):
-        self.screen = screen
-        self.pads = set()
-        self.drawn_pads = set()
-        self.uly, self.ulx = uly, ulx
-        self.bry, self.brx = bry, brx
-        self.height = self.bry - self.uly - 1  # amount of enclosed rows
-        self.width = self.brx - self.ulx - 1  # amount of enclosed columns
-        self.draw_cornerless_frame()
+class WeekTab(HorzFrame):
+    stretch_height = True
+    stretch_width = True
 
-    def refresh(self):
-        for pad in self.drawn_pads:
-            pad.refresh()
+    input = Input()
 
-    def resize(self, uly, ulx, bry, brx):
-        # Resize frame
-        self.uly, self.ulx = uly, ulx
-        self.bry, self.brx = bry, brx
-        # Recalculate height/width
-        self.height = self.bry - self.uly - 1
-        self.width = self.brx - self.ulx - 1
-        # Redraw positions of all pads
-        self.drawn_pads = set()
-        for pad in self.pads:
-            self.draw_pad(pad)
-            pad.resize()  # some pads need to handle some logic themselves, eg scrolling
-        # Draw frame
-        self.draw_cornerless_frame()
+    def __init__(self, weekdata):
+        self.weekdata = weekdata
+        self.timetableframe = self.create(
+            TimetableFrame, weekdata, width=50, bordered=True
+        )
+        self.activityframe = self.create(ActivityFrame, weekdata, bordered=True)
+        self.timetable = self.timetableframe.timetable
+        self.activitytable = self.activityframe.activitytable
+        self.input.install(self)
 
-    def add_pad(self, pad: Pad, frameuly, frameulx):
-        """Adds a pad to this frame, interpreting its 'clip' coordinates as relative to the frame"""
-        self.pads.add(pad)
-        pad.frame = self
-        pad.frameuly = frameuly
-        pad.frameulx = frameulx
-        self.draw_pad(pad)
+    def draw_static(self):
+        super().draw_static()
+        self.activitytable.draw_activities_markers(*self.timetable.cursor_timeslot())
 
-    def draw_pad(self, pad: Pad):
-        frameuly = pad.frameuly if pad.frameuly >= 0 else self.height + pad.frameuly
-        frameulx = pad.frameulx if pad.frameulx >= 0 else self.width + pad.frameulx
-        if (
-            frameuly >= self.height
-            or frameulx >= self.width
-            or frameuly < 0
-            or frameulx < 0
-        ):
-            log.warning(
-                f"Could not draw pad {pad.__class__.__name__} with frame-relative upper left corner ({frameuly, frameulx}) to frame with height {self.height} and width {self.width}"
-            )
-            return
+    @input.on_key(ord("w"), ord("W"))
+    def timetable_up(self):
+        self.timetable_select(-1, 0)
 
-        if pad.stretch_height:
-            pad.pad_resize(height=self.height - frameuly)
-        if pad.stretch_width:
-            pad.pad_resize(width=self.width - frameulx)
-        clipuly = frameuly + self.uly + 1
-        clipulx = frameulx + self.ulx + 1
-        clipbry = min(self.height - 1, frameuly + pad.padheight - 1) + self.uly + 1
-        clipbrx = min(self.width - 1, frameulx + pad.padwidth - 1) + self.ulx + 1
-        if clipbry < clipuly or clipbrx < clipulx:
-            log.warning(
-                f"Could not draw pad {pad.__class__.__name__} with absolute upper left corner ({pad.clipuly, pad.clipulx}) and absolute bottom right corner ({pad.clipbry, pad.clipbrx}) because width or height is zero or negative.  "
-            )
-            return
+    @input.on_key(ord("s"), ord("S"))
+    def timetable_down(self):
+        self.timetable_select(1, 0)
 
-        pad.clip_set(clipuly, clipulx, clipbry, clipbrx)
-        pad.draw_static()
-        self.drawn_pads.add(pad)
+    @input.on_key(ord("a"), ord("A"))
+    def timetable_left(self):
+        self.timetable_select(0, -1)
 
-    def draw_cornerless_frame(self):
-        # # is a placeholder corner character
-        self.screen.addch(self.uly, self.ulx, 35)  # #
-        self.screen.addch(self.uly, self.brx, 35)  # #
-        self.screen.addch(self.bry, self.ulx, 35)  # #
-        self.screen.addch(self.bry, self.brx, 35)  # #
-        # left side
-        for y in range(1, self.height + 1):
-            coords = self.uly + y, self.ulx
-            if self.screen.inch(*coords) & 0xFF == 35:
-                continue
-            painted_char = "│"
-            self.screen.addch(*coords, painted_char)
-        # right side
-        for y in range(1, self.height + 1):
-            coords = self.uly + y, self.brx
-            if self.screen.inch(*coords) & 0xFF == 35:
-                continue
-            painted_char = "│"
-            self.screen.addch(*coords, painted_char)
-        # top side
-        for x in range(1, self.width + 1):
-            coords = self.uly, self.ulx + x
-            if self.screen.inch(*coords) & 0xFF == 35:
-                continue
-            painted_char = "─"
-            self.screen.addch(*coords, painted_char)
-        # bottom side
-        for x in range(1, self.width + 1):
-            coords = self.bry, self.ulx + x
-            if self.screen.inch(*coords) & 0xFF == 35:
-                continue
-            painted_char = "─"
-            self.screen.addch(*coords, painted_char)
+    @input.on_key(ord("d"), ord("D"))
+    def timetable_right(self):
+        self.timetable_select(0, 1)
+
+    def timetable_select(self, d_y, d_x):
+        self.activitytable.draw_activities_markers(
+            *self.timetable.cursor_timeslot(), clear=True
+        )
+        self.timetable.cursor_y += d_y
+        self.timetable.cursor_x += d_x
+        self.timetable.select(shift=chr(self.input.c).isupper())
+        self.activitytable.draw_activities_markers(*self.timetable.cursor_timeslot())
+        self.activitytable.refresh()
+
+    @input.on_key(ord("q"), ord("e"))
+    def assign(self):
+        verify = self.input.c == ord("e")
+        activity = self.activitytable.cursor_activity()
+        self.activitytable.draw_activities_markers(
+            *self.timetable.cursor_timeslot(), clear=True
+        )
+        for y, x in self.timetable.selected:
+            self.weekdata.assign(y, x, activity, verify=verify)
+            self.timetable.draw_timeslot(y, x)
+        self.timetable.refresh()
+        self.activitytable.draw_activities_markers(*self.timetable.cursor_timeslot())
+        self.activitytable.refresh()
+
+    @input.on_key(ord("i"))
+    def activitytable_up(self):
+        self.activitytable.select(-1)
+
+    @input.on_key(ord("k"))
+    def activitytable_down(self):
+        self.activitytable.select(1)
+
+    @input.on_key(ord("u"))
+    def activitytable_delete(self):
+        activity = self.activitytable.cursor_activity()
+        self.activitytable.draw_activities_markers(
+            *self.timetable.cursor_timeslot(), clear=True
+        )
+        for i, y in enumerate(self.weekdata.timetable):
+            for j, x in enumerate(y):
+                if x.plan == activity:
+                    x.plan = None
+                    self.timetable.draw_timeslot(i, j)
+                if x.verify == activity:
+                    x.verify = None
+                    self.timetable.draw_timeslot(i, j)
+        self.timetable.refresh()
+        self.activitytable.delete()
+        self.activitytable.draw_activities_markers(*self.timetable.cursor_timeslot())
+        self.activitytable.refresh()
+
+    @input.on_key(ord("o"))
+    def activitytable_edit(self):
+        self.activitytable.edit()
 
 
 class VertScrollPad(Pad):
-    def __init__(
-        self, padheight, padwidth, clip=None, stretch_height=False, stretch_width=True
-    ):
-        super().__init__(
-            padheight,
-            padwidth,
-            clip=clip,
-            stretch_height=stretch_height,
-            stretch_width=stretch_width,
-        )
-        self.scroll_variable = 0
-        self.scrollpos = 0
+    scroll_variable = 0
+    scrollpos = 0
 
     def refresh(self):
         self.pad.refresh(
@@ -320,11 +441,12 @@ class VertScrollPad(Pad):
             0,
             self.clipuly,
             self.clipulx,
-            min(self.clipbry, self.clipuly + self.padheight - 1),
+            min(self.clipbry, self.clipuly + self.height - 1),
             self.clipbrx,
         )
 
     def resize(self):
+        Pad.resize(self)
         self.scroll(self.scroll_variable)
 
     def scroll(self, select):
@@ -336,37 +458,27 @@ class VertScrollPad(Pad):
             self.scrollpos = select_scroll_delta_upper
         elif select_scroll_delta_lower < self.scrollpos:
             self.scrollpos = select_scroll_delta_lower
-        self.scrollpos = max(0, min(self.padheight - self.clipheight, self.scrollpos))
+        self.scrollpos = max(0, min(self.height - self.clipheight, self.scrollpos))
 
 
 class TimetablePad(VertScrollPad):
+    stretch_width = True
+
     def __init__(self, weekdata):
         self.weekdata = weekdata
-        self.days = 7
-        super().__init__(
-            self.weekdata.nr_timesegments,
-            timewidth + ((1 + slotwidth) * 7) + 1,
-        )
         self.cursor_y, self.cursor_x = 0, 0
         self.hold_cursor_y, self.hold_cursor_x = self.cursor_y, self.cursor_x
         self.selected = ((self.cursor_y, self.cursor_x),)
 
     def draw_static(self):
-        if (
-            self.weekdata.nr_timesegments % 24 != 0
-            and 24 % self.weekdata.nr_timesegments != 0
-        ):
-            pass
-            # PH : Log warning here
         for i in range(0, self.weekdata.nr_timesegments):
             minutes = int(i * (24 / self.weekdata.nr_timesegments) * 60)
             self.pad.addstr(
                 i, 0, f"{minutes // 60:02d}:{minutes % 60:02d}", curses.A_DIM
             )
-        self.scrollpos = 0
-        self.draw_cursor()
-        for x in range(self.days):
-            for y in range(self.padheight):
+        self.draw_selected()
+        for y in range(len(self.weekdata.timetable)):
+            for x in range(len(self.weekdata.timetable[0])):
                 self.draw_timeslot(y, x)
 
     def draw_timeslot(self, y, x):
@@ -385,17 +497,21 @@ class TimetablePad(VertScrollPad):
         if timeslot.plan != None:
             self.pad.addch(y, begin_x + slotwidth // 2, char, timeslot.plan.color())
 
-    def draw_cursor(self):
+    def draw_selected(self, clear=False):
+        select_char = "+" if not clear else " "
+        for y, x in self.selected:
+            self.pad.addch(y, timewidth + x * 6, select_char)
+            self.pad.addch(y, timewidth + x * 6 + slotwidth + 1, select_char)
         self.pad.addch(self.cursor_y, timewidth + self.cursor_x * 6, ">")
         self.pad.addch(
             self.cursor_y, timewidth + self.cursor_x * 6 + slotwidth + 1, "<"
         )
 
     def select(self, shift=False):
-        self.cursor_y %= self.padheight
-        self.cursor_x %= self.days
+        self.cursor_y %= self.height
+        self.cursor_x %= 7
         self.scroll(self.cursor_y)
-        self.clear_select()
+        self.draw_selected(clear=True)
         if not shift:
             self.hold_cursor_y, self.hold_cursor_x = self.cursor_y, self.cursor_x
             self.selected = ((self.cursor_y, self.cursor_x),)
@@ -411,47 +527,19 @@ class TimetablePad(VertScrollPad):
                     max(self.cursor_x, self.hold_cursor_x) + 1,
                 )
             )
-        for y, x in self.selected:
-            self.pad.addch(y, timewidth + x * 6, "+")
-            self.pad.addch(y, timewidth + x * 6 + slotwidth + 1, "+")
-        self.draw_cursor()
+
+        self.draw_selected()
         self.refresh()
-        self.weekdata.change_cursor_timeslot(self.cursor_y, self.cursor_x)
 
-    def clear_select(self):
-        for y, x in self.selected:
-            self.pad.addch(y, timewidth + x * 6, " ")
-            self.pad.addch(y, 2 * timewidth + 1 + x * 6, " ")
-
-    def assign(self, verify=False):
-        for y, x in self.selected:
-            self.weekdata.assign(y, x, verify=verify)
-            self.draw_timeslot(y, x)
-        self.refresh()
-        self.weekdata.change_cursor_timeslot(self.cursor_y, self.cursor_x)
-
-    def input_loop(self, c):
-        if c == ord("w") or c == ord("W"):
-            self.cursor_y -= 1
-            self.select(shift=c == ord("W"))
-        elif c == ord("s") or c == ord("S"):
-            self.cursor_y += 1
-            self.select(shift=c == ord("S"))
-        elif c == ord("a") or c == ord("A"):
-            self.cursor_x -= 1
-            self.select(shift=c == ord("A"))
-        elif c == ord("d") or c == ord("D"):
-            self.cursor_x += 1
-            self.select(shift=c == ord("D"))
-        elif c == ord("q"):
-            self.assign(verify=False)
-        elif c == ord("e"):
-            self.assign(verify=True)
+    def cursor_timeslot(self):
+        return self.cursor_y, self.cursor_x
 
 
 class TimetableHeaderPad(Pad):
+    _height = 3
+    stretch_width = True
+
     def __init__(self, weekdata):
-        super().__init__(3, timewidth + ((1 + slotwidth) * 7) + 1)
         self.weekdata = weekdata
 
     def draw_static(self):
@@ -462,39 +550,36 @@ class TimetableHeaderPad(Pad):
         self.pad.addstr(0, 5 - len(month), month)
         year = weekdate.strftime("%Y")
         self.pad.addstr(1, 5 - len(year), year)
-        for i in range(7, self.padwidth, 6):
+        for i in range(7, self.width, 6):
             self.pad.addstr(0, i, weekdate.strftime("%d"))
             self.pad.addstr(1, i, weekdate.strftime("%a"))
             weekdate += datetime.timedelta(days=1)
 
 
-class TimetableFrame(Frame):
-    def load_weekdata(self, weekdata):
+class TimetableFrame(VertFrame):
+    stretch_height = True
+
+    def __init__(self, weekdata):
         self.weekdata = weekdata
         weekdata.timetableframe = self
-
-    def start(self):
-        self.header = TimetableHeaderPad(
+        self.header = self.create(
+            TimetableHeaderPad,
             self.weekdata,
         )
-        self.add_pad(self.header, 0, 0)
-        self.timetable = TimetablePad(
+        self.timetable = self.create(
+            TimetablePad,
             self.weekdata,
+            height=self.weekdata.nr_timesegments,
         )
-        self.add_pad(self.timetable, self.header.clipheight, 0)
-
-    def input_loop(self, c):
-        self.timetable.input_loop(c)
 
 
 class ActivityTablePad(VertScrollPad):
     new_str = " + new"
+    stretch_width = True
 
     def __init__(self, weekdata):
         self.weekdata = weekdata
-
-        super().__init__(len(self.weekdata.activities) + 1, 20, stretch_width=True)
-        self.namewidth = self.padwidth - 12
+        self.namewidth = self.width - 12
         self.cursor = 0
 
     def draw_static(self):
@@ -502,60 +587,47 @@ class ActivityTablePad(VertScrollPad):
         self.draw_cursor()
 
     def draw_activities(self):
-        if self.padheight != len(self.weekdata.activities) + 1:
-            self.pad_resize(height=len(self.weekdata.activities) + 1)
-            self.frame.draw_pad(self)
+        self.height = len(self.weekdata.activities) + 1
         for i, activity in enumerate(self.weekdata.activities):
             self.pad.addstr(i, 11, activity.name[-self.namewidth :])
             self.pad.chgat(i, 0, activity.color() + curses.A_REVERSE)
         self.pad.addstr(len(self.weekdata.activities), 11, self.new_str)
-        self.draw_activities_markers()
 
-    def draw_activities_markers(self, clear=True):
-        cursor_timeslot = self.weekdata.cursor_timeslot()
-        if cursor_timeslot == None:
-            return
+    def draw_activities_markers(self, y, x, clear=False):
+        cursor_timeslot = self.weekdata.timetable[y][x]
+        char = "x" if not clear else " "
         for i, activity in enumerate(self.weekdata.activities):
-            if clear:
-                self.pad.addch(i, 2, " ", activity.color() + curses.A_REVERSE)
-                self.pad.addch(i, 5, " ", activity.color() + curses.A_REVERSE)
             if activity == cursor_timeslot.plan:
-                self.pad.addch(i, 2, "x", activity.color() + curses.A_REVERSE)
+                self.pad.addch(i, 2, char, activity.color() + curses.A_REVERSE)
             if activity == cursor_timeslot.verify:
-                self.pad.addch(i, 5, "x", activity.color() + curses.A_REVERSE)
-        self.refresh()
+                self.pad.addch(i, 5, char, activity.color() + curses.A_REVERSE)
 
     def draw_cursor(self, clear=False):
         char = ">" if not clear else " "
-        if self.cursor < self.padheight - 1:
+        if self.cursor < len(self.weekdata.activities):
             self.pad.addch(
                 self.cursor,
                 8,
                 char,
                 self.cursor_activity().color() + curses.A_REVERSE,
             )
-        else:
+        elif self.cursor == len(self.weekdata.activities):
             self.pad.addch(self.cursor, 8, char)
 
-    def select(self):
-        self.cursor %= self.padheight
+    def select(self, d):
+        self.draw_cursor(clear=True)
+        self.cursor += d
+        self.cursor %= self.height
         self.scroll(self.cursor)
         self.draw_cursor()
         self.refresh()
 
     def delete(self):
-        if len(self.weekdata.activities) <= 0 or self.cursor == self.padheight - 1:
+        if self.cursor == len(self.weekdata.activities):
             return
-        self.pad.move(self.cursor, 0)
-        self.pad.clrtoeol()
-        self.pad.move(self.padheight - 2, 0)
-        self.pad.clrtoeol()
-        self.pad.move(self.padheight - 1, 0)
-        self.pad.clrtoeol()
-        self.refresh()
         self.weekdata.delete_activity(self.cursor_activity())
         self.draw_activities()
-        self.select()
+        self.select(0)
 
     def edit(self):
         is_new = self.cursor_activity() == None
@@ -569,7 +641,7 @@ class ActivityTablePad(VertScrollPad):
             self.weekdata.edit_activity(activity, activity_name, r, g, b)
             self.cursor = self.weekdata.activities.index(activity)
         self.draw_activities()
-        self.select()
+        self.select(0)
 
     def prompt_name(self, activity):
         activity_name = activity.name
@@ -580,14 +652,14 @@ class ActivityTablePad(VertScrollPad):
         self.pad.addstr(self.cursor, 11, activity_name[-self.namewidth :], attr)
         self.refresh()
 
-        c = twoeight.screen.getch()
+        c = self.root().screen.getch()
         while (
             c != curses.KEY_ENTER
             and c != 10  # also check for new line
             and c != 13  # and carriage return
         ):
             if c == curses.KEY_RESIZE:
-                twoeight.resize()
+                resize_term(self.root())
             else:
                 activity_name += chr(c)
                 if c == curses.KEY_BACKSPACE or c == ord("\b"):
@@ -606,7 +678,7 @@ class ActivityTablePad(VertScrollPad):
                 attr,
             )
             self.refresh()
-            c = twoeight.screen.getch()
+            c = self.root().screen.getch()
         self.pad.move(self.cursor, 11)
         self.pad.clrtoeol()
         return activity_name
@@ -629,10 +701,10 @@ class ActivityTablePad(VertScrollPad):
             attr,
         )
         self.refresh()
-        c = twoeight.screen.getch()
+        c = self.root().screen.getch()
         while True:
             if c == curses.KEY_RESIZE:
-                twoeight.resize()
+                resize_term(self.root())
             else:
                 if (
                     c == curses.KEY_ENTER or c == 10 or c == 13
@@ -658,7 +730,7 @@ class ActivityTablePad(VertScrollPad):
                 attr,
             )
             self.refresh()
-            c = twoeight.screen.getch()
+            c = self.root().screen.getch()
         self.pad.move(self.cursor, 11)
         self.pad.clrtoeol()
         return r, g, b
@@ -668,24 +740,10 @@ class ActivityTablePad(VertScrollPad):
             return self.weekdata.activities[self.cursor]
         return None
 
-    def input_loop(self, c):
-        if c == ord("i"):
-            self.draw_cursor(clear=True)
-            self.cursor -= 1
-            self.select()
-        elif c == ord("k"):
-            self.draw_cursor(clear=True)
-            self.cursor += 1
-            self.select()
-        elif c == ord("o"):
-            self.edit()
-        elif c == ord("u"):
-            self.delete()
-
 
 class ActivityHeaderPad(Pad):
-    def __init__(self):
-        super().__init__(2, 20)
+    _height = 2
+    _width = 20
 
     def draw_static(self):
         self.pad.addch(0, 2, "p")
@@ -693,19 +751,19 @@ class ActivityHeaderPad(Pad):
         self.pad.addstr(0, 11, "name")
 
 
-class ActivityFrame(Frame):
-    def load_weekdata(self, weekdata):
+class ActivityFrame(VertFrame):
+    stretch_width = True
+    stretch_height = True
+
+    def __init__(self, weekdata):
         self.weekdata = weekdata
         weekdata.activityframe = self
-
-    def start(self):
-        self.header = ActivityHeaderPad()
-        self.add_pad(self.header, 0, 0)
-        self.activitytable = ActivityTablePad(self.weekdata)
-        self.add_pad(self.activitytable, self.header.clipheight, 0)
-
-    def input_loop(self, c):
-        self.activitytable.input_loop(c)
+        self.header = self.create(ActivityHeaderPad)
+        self.activitytable = self.create(
+            ActivityTablePad,
+            self.weekdata,
+            height=len(self.weekdata.activities) + 1,
+        )
 
 
 class Activity:
@@ -792,8 +850,6 @@ class WeekData:
         self.activities = sorted(activities, key=lambda x: x.name)
         self.timetable = timetable
 
-        self.activityframe = None
-        self.timetableframe = None
         self.date = date
         if date == None:
             self.date = datetime.date.fromisocalendar(year, week, 1)
@@ -807,18 +863,6 @@ class WeekData:
         self.activities = sorted(self.activities, key=lambda x: x.name)
 
     def delete_activity(self, activity: Activity):
-        for i, y in enumerate(self.timetable):
-            for j, x in enumerate(y):
-                if x.plan == activity:
-                    x.plan = None
-                    if self.timetableframe.timetable != None:
-                        self.timetableframe.timetable.draw_timeslot(i, j)
-                if x.verify == activity:
-                    x.verify = None
-                    if self.timetableframe.timetable != None:
-                        self.timetableframe.timetable.draw_timeslot(i, j)
-        if self.timetableframe.timetable != None:
-            self.timetableframe.timetable.refresh()
         self.activities.remove(activity)
 
     def edit_activity(self, activity, name, r, g, b):
@@ -826,24 +870,12 @@ class WeekData:
         activity.r, activity.g, activity.b = r, g, b
         self.activities = sorted(self.activities, key=lambda x: x.name)
 
-    def assign(self, y, x, verify=False):
-        if self.activityframe == None:
-            return
-        activity = self.activityframe.activitytable.cursor_activity()
+    def assign(self, y, x, activity, verify=False):
+        "Assigns an activity to the timeslot with coordinates y, x."
         if not verify:
             self.timetable[y][x].plan = activity
         else:
             self.timetable[y][x].verify = activity
-
-    def cursor_timeslot(self):
-        if self.timetableframe == None:
-            return None
-        return self.timetable[self.timetableframe.timetable.cursor_y][
-            self.timetableframe.timetable.cursor_x
-        ]
-
-    def change_cursor_timeslot(self, y, x):
-        self.activityframe.activitytable.draw_activities_markers()
 
     @classmethod
     def dummy(cls, nr_timesegments, nr_activities=10):
@@ -996,14 +1028,36 @@ def main(stdscr):
     curses.use_default_colors()
     curses.curs_set(0)
     stdscr.leaveok(False)
-    global twoeight
-    twoeight = TwoEight(stdscr)
-    twoeight.start()
-    twoeight.input_loop()
+
+    term_height, term_width = stdscr.getmaxyx()
+    curses.resize_term(term_height, term_width)
+    twoeight = object.__new__(TwoEight)
+    Frame.__init__(twoeight, 0, 0, height=term_height - 1, width=term_width)
+    TwoEight.__init__(twoeight, stdscr)
+    twoeight.refresh()
+    while True:
+        try:
+            twoeight.input.process(stdscr.getch())
+        except CleanExit:
+            stdscr.clear()
+            stdscr.refresh()
+            exit()
+
+
+def resize_term(root_frame):
+    try:
+        term_height, term_width = root_frame.screen.getmaxyx()
+    except AttributeError:
+        log.error(
+            f"Root frame '{root_frame}' does not have a 'screen' attribute to be able to resize the terminal."
+        )
+        return
+    curses.resize_term(term_height, term_width)
+    root_frame.height = term_height - 1
+    root_frame.width = term_width
+    root_frame.resize()
+    root_frame.refresh()
 
 
 if __name__ == "__main__":
-    try:
-        curses.wrapper(main)
-    except CleanExit:
-        exit()
+    curses.wrapper(main)
