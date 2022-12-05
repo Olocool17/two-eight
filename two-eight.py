@@ -39,7 +39,7 @@ class Input:
         self.fallback = fallback
 
     def process(self, c):
-        if self.controller == None:
+        if self.controller is None:
             log.warning(
                 f"Could not process input '{c}' for input {self.__class__.__name__} because it does not have a controller installed."
             )
@@ -630,7 +630,7 @@ class ActivityTablePad(VertScrollPad):
         self.select(0)
 
     def edit(self):
-        is_new = self.cursor_activity() == None
+        is_new = self.cursor_activity() is None
         activity = Activity("", 0, 0, 0) if is_new else self.cursor_activity()
         activity_name = self.prompt_name(activity)
         if activity_name != "":
@@ -851,7 +851,7 @@ class WeekData:
         self.timetable = timetable
 
         self.date = date
-        if date == None:
+        if date is None:
             self.date = datetime.date.fromisocalendar(year, week, 1)
             self.year, self.week = year, week
         else:
@@ -932,7 +932,7 @@ class Parser:
         """Ensures the database file is loaded into the parser"""
 
         def decorated(self, *args, **kwargs):
-            if self.file == None:
+            if self.file is None:
                 self.open()
             return func(self, *args, **kwargs)
 
