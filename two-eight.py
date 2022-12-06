@@ -63,7 +63,7 @@ class Input:
                 log.warning(
                     f"Key '{c}' is already bound to function '{self.controls[c]}'. This will be overwritten with function '{func}'."
                 )
-            self.controls.update({c: func})
+            self.controls[c] = func
         return func
 
 
