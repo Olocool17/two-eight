@@ -134,7 +134,10 @@ class Pad:
                     if isinstance(self.parent, HorzFrame)
                     else self.parent.width
                 ) - 2 * self.parent.bordered
+        self.clip_resize()
 
+    def clip_resize(self):
+        if self.parent is not None:
             self.bry = min(
                 self.uly + self.height - 1,
                 self.parent.height - 1 - 1 * self.parent.bordered,
@@ -179,6 +182,7 @@ class Pad:
             self.pad = (
                 curses.newpad(self.height + 1, self.width) if self.init_pad else None
             )
+            self.clip_resize()
 
     @property
     def width(self):
@@ -191,6 +195,7 @@ class Pad:
             self.pad = (
                 curses.newpad(self.height + 1, self.width) if self.init_pad else None
             )
+            self.clip_resize()
 
     def draw_static(self):
         pass
@@ -264,7 +269,7 @@ class Frame(Pad):
         Pad.resize(self)
         for child in self.pads:
             child.resize()
-        self.draw_static()
+            child.draw_static()
 
     def draw_cornerless_frame(self):
         if not self.bordered:
@@ -1082,6 +1087,7 @@ def resize_term(root_frame):
     root_frame.height = term_height - 1
     root_frame.width = term_width
     root_frame.resize()
+    root_frame.draw_static()
     root_frame.refresh()
 
 
