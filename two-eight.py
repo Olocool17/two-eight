@@ -41,7 +41,7 @@ class Input:
     def process(self, c):
         if self.controller is None:
             log.warning(
-                f"Could not process input '{c}' for input {self.__class__.__name__} because it does not have a controller installed."
+                f"Could not process input '{c}' for {self} because it does not have a controller installed."
             )
             return
         try:
@@ -57,6 +57,27 @@ class Input:
                     )
                     continue
 
+    def seize(self, seized_input):
+        """Temporarily sets the seized Input's fallback to this Input."""
+        if not isinstance(seized_input, Input):
+            log.error(
+                f"Could not seize input from {seized_input} because it is not an Input."
+            )
+            return
+
+        class InputSeize:
+            input = self
+            seized = seized_input
+
+            def __enter__(self):
+                self.fallback = self.seized.fallback
+                self.seized.fallback = self
+
+            def __exit__(self, *exc):
+                self.seized.fallback = self.fallback
+
+        return InputSeize()
+
     def __call__(self, func):
         for c in self.c:
             if c in self.controls.keys():
@@ -65,6 +86,11 @@ class Input:
                 )
             self.controls[c] = func
         return func
+
+    def __str__(self):
+        return (
+            f"Input for controller '{self.controller}' and fallback '{self.fallback}'"
+        )
 
 
 class Pad:
