@@ -1052,30 +1052,14 @@ class CleanExit(Exception):
     pass
 
 
-def main(stdscr):
-    log.info(f"Terminal has color support: {curses.has_colors()}")
-    log.info(
-        f"Terminal has extended color support: {curses.has_extended_color_support()}"
-    )
-    log.info(f"Terminal can change colors: {curses.can_change_color()}")
-    log.info(f"Amount of terminal colors: {curses.COLORS}")
-    log.info(f"Amount of terminal color pairs: {curses.COLOR_PAIRS}")
-    curses.use_default_colors()
-    curses.curs_set(0)
-    stdscr.leaveok(False)
-
+def root_frame_init(root_cls, stdscr):
     term_height, term_width = stdscr.getmaxyx()
     curses.resize_term(term_height, term_width)
-    twoeight = object.__new__(TwoEight)
-    Frame.__init__(twoeight, 0, 0, height=term_height - 1, width=term_width)
-    TwoEight.__init__(twoeight, stdscr)
-    twoeight.refresh()
-    try:
-        twoeight.input.start_loop(stdscr)
-    except CleanExit:
-        stdscr.clear()
-        stdscr.refresh()
-        exit()
+    root_frame = object.__new__(root_cls)
+    Frame.__init__(root_frame, 0, 0, height=term_height - 1, width=term_width)
+    root_cls.__init__(root_frame, stdscr)
+    root_frame.refresh()
+    return root_frame
 
 
 def resize_term(root_frame):
@@ -1092,6 +1076,26 @@ def resize_term(root_frame):
     root_frame.resize()
     root_frame.draw_static()
     root_frame.refresh()
+
+
+def main(stdscr):
+    log.info(f"Terminal has color support: {curses.has_colors()}")
+    log.info(
+        f"Terminal has extended color support: {curses.has_extended_color_support()}"
+    )
+    log.info(f"Terminal can change colors: {curses.can_change_color()}")
+    log.info(f"Amount of terminal colors: {curses.COLORS}")
+    log.info(f"Amount of terminal color pairs: {curses.COLOR_PAIRS}")
+    curses.use_default_colors()
+    curses.curs_set(0)
+    stdscr.leaveok(False)
+    twoeight = root_frame_init(TwoEight, stdscr)
+    try:
+        twoeight.input.start_loop(stdscr)
+    except CleanExit:
+        stdscr.clear()
+        stdscr.refresh()
+        exit()
 
 
 if __name__ == "__main__":
