@@ -78,11 +78,15 @@ class Input:
 
         return InputSeize()
 
+    def start_loop(self, screen):
+        while True:
+            self.process(screen.getch())
+
     def __call__(self, func):
         for c in self.c:
             if c in self.controls.keys():
                 log.warning(
-                    f"Key '{c}' is already bound to function '{self.controls[c]}'. This will be overwritten with function '{func}'."
+                    f"Key '{c}' in '{self}' is already bound to function '{self.controls[c]}'. This will be overwritten with function '{func}'."
                 )
             self.controls[c] = func
         return func
@@ -1066,13 +1070,12 @@ def main(stdscr):
     Frame.__init__(twoeight, 0, 0, height=term_height - 1, width=term_width)
     TwoEight.__init__(twoeight, stdscr)
     twoeight.refresh()
-    while True:
-        try:
-            twoeight.input.process(stdscr.getch())
-        except CleanExit:
-            stdscr.clear()
-            stdscr.refresh()
-            exit()
+    try:
+        twoeight.input.start_loop(stdscr)
+    except CleanExit:
+        stdscr.clear()
+        stdscr.refresh()
+        exit()
 
 
 def resize_term(root_frame):
