@@ -34,9 +34,13 @@ class Input:
         self.c = args
         return self
 
-    def install(self, controller, fallback: tuple = ()):
+    def on_any(self):
+        return self.on_key(self, "*")
+
+    def install(self, controller, fallback: tuple = (), screen=None):
         self.controller = controller
         self.fallback = fallback
+        self.screen = screen
 
     def process(self, c):
         if self.controller is None:
@@ -44,10 +48,12 @@ class Input:
                 f"Could not process input '{c}' for {self} because it does not have a controller installed."
             )
             return
+        self.c = c
         try:
-            self.c = c
             self.controls[c](self.controller)
         except KeyError:
+            if "*" in self.controls:
+                self.controls["*"](self.controller)
             for e in self.fallback:
                 try:
                     e.input.process(c)
@@ -57,30 +63,32 @@ class Input:
                     )
                     continue
 
-    def seize(self, seized_input):
-        """Temporarily sets the seized Input's fallback to this Input."""
-        if not isinstance(seized_input, Input):
-            log.error(
-                f"Could not seize input from {seized_input} because it is not an Input."
+    class InputBreak(Exception):
+        pass
+
+    def start_loop(self):
+        if self.screen is None:
+            log.warning(
+                f"Could not start input loop for {self} because it does not have a screen installed."
             )
             return
+        try:
+            while True:
+                self.process(self.screen.getch())
+        except self.InputBreak:
+            return
 
-        class InputSeize:
-            input = self
-            seized = seized_input
+    def __enter__(self):
+        self.fallback_store = self.fallback
+        self.controls_store = self.controls.copy()
+        self.fallback = ()
+        return self
 
-            def __enter__(self):
-                self.fallback = self.seized.fallback
-                self.seized.fallback = self
-
-            def __exit__(self, *exc):
-                self.seized.fallback = self.fallback
-
-        return InputSeize()
-
-    def start_loop(self, screen):
-        while True:
-            self.process(screen.getch())
+    def __exit__(self, *exc):
+        self.fallback = self.fallback_store
+        self.controls = self.controls_store
+        self.fallback_store = None
+        self.controls_store = None
 
     def __call__(self, func):
         for c in self.c:
@@ -348,7 +356,7 @@ class TwoEight(VertFrame):
             (self.tabs.index(self.current_tab) + 1) % len(self.tabs)
         ]
         self.header.draw_tab(self.current_tab)
-        self.input.install(self, fallback=(self.current_tab,))
+        self.input.install(self, fallback=(self.current_tab,), screen=self.screen)
 
     @input.on_key(curses.KEY_RESIZE)
     def resize_term(self):
@@ -611,11 +619,13 @@ class TimetableFrame(VertFrame):
 class ActivityTablePad(VertScrollPad):
     new_str = " + new"
     stretch_width = True
+    input = Input()
 
     def __init__(self, weekdata):
         self.weekdata = weekdata
         self.namewidth = self.width - 12
         self.cursor = 0
+        self.input.install(self)
 
     def draw_static(self):
         self.draw_activities()
@@ -679,44 +689,49 @@ class ActivityTablePad(VertScrollPad):
         self.select(0)
 
     def prompt_name(self, activity):
-        activity_name = activity.name
+        self.activity_name = activity.name
         attr = activity.color() + curses.A_REVERSE
         self.pad.move(self.cursor, 11)
         self.pad.clrtoeol()
         self.pad.chgat(self.cursor, 0, attr)
-        self.pad.addstr(self.cursor, 11, activity_name[-self.namewidth :], attr)
+        self.pad.addstr(self.cursor, 11, self.activity_name[-self.namewidth :], attr)
         self.refresh()
 
-        c = self.root().screen.getch()
-        while (
-            c != curses.KEY_ENTER
-            and c != 10  # also check for new line
-            and c != 13  # and carriage return
-        ):
-            if c == curses.KEY_RESIZE:
-                resize_term(self.root())
-            else:
-                activity_name += chr(c)
-                if c == curses.KEY_BACKSPACE or c == ord("\b"):
-                    activity_name = activity_name[:-2]
-                    if len(activity_name) + 1 <= self.namewidth:
-                        self.pad.addch(
-                            self.cursor,
-                            11 + len(activity_name),
-                            " ",
-                            attr,
-                        )
-            self.pad.addstr(
-                self.cursor,
-                11,
-                activity_name[-self.namewidth :],
-                attr,
-            )
-            self.refresh()
-            c = self.root().screen.getch()
-        self.pad.move(self.cursor, 11)
-        self.pad.clrtoeol()
-        return activity_name
+        with self.root().input as seizedinput:
+
+            @seizedinput.on_key(curses.KEY_ENTER, 10, 13)
+            def confirm(_):
+                self.pad.move(self.cursor, 11)
+                self.pad.clrtoeol()
+                raise seizedinput.InputBreak
+
+            @seizedinput.on_key(curses.KEY_BACKSPACE, ord("\b"))
+            def backspace(_):
+                self.activity_name = self.activity_name[:-1]
+                if len(self.activity_name) + 1 <= self.namewidth:
+                    self.pad.addch(
+                        self.cursor,
+                        11 + len(self.activity_name),
+                        " ",
+                        attr,
+                    )
+                self.refresh()
+
+            @seizedinput.on_any()
+            def type_char(_):
+                c = seizedinput.c
+                self.activity_name += chr(c)
+
+                self.pad.addstr(
+                    self.cursor,
+                    11,
+                    self.activity_name[-self.namewidth :],
+                    attr,
+                )
+                self.refresh()
+
+            seizedinput.start_loop()
+        return self.activity_name
 
     def prompt_colors(self, activity):
         (
@@ -1091,7 +1106,7 @@ def main(stdscr):
     stdscr.leaveok(False)
     twoeight = root_frame_init(TwoEight, stdscr)
     try:
-        twoeight.input.start_loop(stdscr)
+        twoeight.input.start_loop()
     except CleanExit:
         stdscr.clear()
         stdscr.refresh()
