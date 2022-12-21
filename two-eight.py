@@ -696,13 +696,10 @@ class ActivityTablePad(VertScrollPad):
         self.pad.chgat(self.cursor, 0, attr)
         self.pad.addstr(self.cursor, 11, self.activity_name[-self.namewidth :], attr)
         self.refresh()
-
         with self.root().input as seizedinput:
 
-            @seizedinput.on_key(curses.KEY_ENTER, 10, 13)
+            @seizedinput.on_key(curses.KEY_ENTER, 10, 13)  # new line, carriage return
             def confirm(_):
-                self.pad.move(self.cursor, 11)
-                self.pad.clrtoeol()
                 raise seizedinput.InputBreak
 
             @seizedinput.on_key(curses.KEY_BACKSPACE, ord("\b"))
@@ -719,8 +716,7 @@ class ActivityTablePad(VertScrollPad):
 
             @seizedinput.on_any()
             def type_char(_):
-                c = seizedinput.c
-                self.activity_name += chr(c)
+                self.activity_name += chr(seizedinput.c)
 
                 self.pad.addstr(
                     self.cursor,
@@ -731,6 +727,8 @@ class ActivityTablePad(VertScrollPad):
                 self.refresh()
 
             seizedinput.start_loop()
+        self.pad.move(self.cursor, 11)
+        self.pad.clrtoeol()
         return self.activity_name
 
     def prompt_colors(self, activity):
@@ -741,8 +739,8 @@ class ActivityTablePad(VertScrollPad):
         ) = (activity.r, activity.g, activity.b)
         colors_str = [f"{r:03d}", f"{g:03d}", f"{b:03d}"]
         attr = activity.color() + curses.A_REVERSE
-        color_index = 0
-        digit_index = 0
+        self.color_index = 0
+        self.digit_index = 0
         self.pad.chgat(self.cursor, 0, attr)
         self.pad.addstr(
             self.cursor,
@@ -751,36 +749,37 @@ class ActivityTablePad(VertScrollPad):
             attr,
         )
         self.refresh()
-        c = self.root().screen.getch()
-        while True:
-            if c == curses.KEY_RESIZE:
-                resize_term(self.root())
-            else:
-                if (
-                    c == curses.KEY_ENTER or c == 10 or c == 13
-                ):  # new line, carriage return
-                    if color_index == 2:
-                        break
-                    color_index += 1
-                    digit_index = 0
-                if chr(c) in "0123456789":
-                    colors_str[color_index] = (
-                        colors_str[color_index][:digit_index]
-                        + chr(c)
-                        + colors_str[color_index][digit_index + 1 :]
-                    )
-                    r, g, b = map(int, colors_str)
-                    activity.change_color(r, g, b)
-                    digit_index += 1
-                    digit_index %= 3
-            self.pad.addstr(
-                self.cursor,
-                11,
-                f"R {colors_str[0]} | G {colors_str[1]} | B {colors_str[2]}",
-                attr,
-            )
-            self.refresh()
-            c = self.root().screen.getch()
+
+        with self.root().input as seizedinput:
+
+            @seizedinput.on_key(curses.KEY_ENTER, 10, 13)  # new line, carriage return
+            def confirm(_):
+                if self.color_index == 2:
+                    raise seizedinput.InputBreak
+                self.color_index += 1
+                self.digit_index = 0
+
+            @seizedinput.on_key(*range(ord("0"), ord("9") + 1))
+            def type_digit(_):
+                colors_str[self.color_index] = (
+                    colors_str[self.color_index][: self.digit_index]
+                    + chr(seizedinput.c)
+                    + colors_str[self.color_index][self.digit_index + 1 :]
+                )
+                r, g, b = map(int, colors_str)
+                activity.change_color(r, g, b)
+                self.digit_index += 1
+                self.digit_index %= 3
+                self.pad.addstr(
+                    self.cursor,
+                    11,
+                    f"R {colors_str[0]} | G {colors_str[1]} | B {colors_str[2]}",
+                    attr,
+                )
+                self.refresh()
+
+            seizedinput.start_loop()
+
         self.pad.move(self.cursor, 11)
         self.pad.clrtoeol()
         return r, g, b
