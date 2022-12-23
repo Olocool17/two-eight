@@ -106,8 +106,8 @@ class Input:
 
 
 class Pad:
-    _height = 0
-    _width = 0
+    height = 0
+    width = 0
     stretch_height = False
     stretch_width = False
 
@@ -116,9 +116,8 @@ class Pad:
     def __init__(self, uly, ulx, height=None, width=None, parent=None, init_pad=True):
         self.parent = parent
         self.uly, self.ulx = uly, ulx
-        self.init_pad = init_pad
-        self._height = height if height is not None else self._height
-        self._width = width if width is not None else self._width
+        self.height = height if height is not None else self.height
+        self.width = width if width is not None else self.width
         self.pad = curses.newpad(self.height + 1, self.width) if init_pad else None
         Pad.resize(self)
 
@@ -146,6 +145,10 @@ class Pad:
                     if isinstance(self.parent, HorzFrame)
                     else self.parent.width
                 ) - 2 * self.parent.bordered
+        if (self.pad is None) or (self.pad.getmaxyx() == (self.height + 1, self.width)):
+            self.clip_resize()
+            return
+        self.pad = curses.newpad(self.height + 1, self.width)
         self.clip_resize()
 
     def clip_resize(self):
@@ -182,32 +185,6 @@ class Pad:
             self.refreshable = False
         else:
             self.refreshable = True
-
-    @property
-    def height(self):
-        return self._height
-
-    @height.setter
-    def height(self, val):
-        if self._height != val:
-            self._height = val
-            self.pad = (
-                curses.newpad(self.height + 1, self.width) if self.init_pad else None
-            )
-            self.clip_resize()
-
-    @property
-    def width(self):
-        return self._width
-
-    @width.setter
-    def width(self, val):
-        if self._width != val:
-            self._width = val
-            self.pad = (
-                curses.newpad(self.height + 1, self.width) if self.init_pad else None
-            )
-            self.clip_resize()
 
     def draw_static(self):
         pass
@@ -369,8 +346,8 @@ class TwoEight(VertFrame):
 
 
 class HeaderPad(Pad):
-    _height = 1
-    _width = 30
+    height = 1
+    width = 30
 
     def draw_static(self):
         self.pad.addstr(0, 0, "two-eight", curses.A_REVERSE)
@@ -579,7 +556,7 @@ class TimetablePad(VertScrollPad):
 
 
 class TimetableHeaderPad(Pad):
-    _height = 3
+    height = 3
     stretch_width = True
 
     def __init__(self, weekdata):
@@ -632,7 +609,9 @@ class ActivityTablePad(VertScrollPad):
         self.draw_cursor()
 
     def draw_activities(self):
-        self.height = len(self.weekdata.activities) + 1
+        if self.height != len(self.weekdata.activities) + 1:
+            self.height = len(self.weekdata.activities) + 1
+            self.resize()
         for i, activity in enumerate(self.weekdata.activities):
             self.pad.addstr(i, 11, activity.name[-self.namewidth :])
             self.pad.chgat(i, 0, activity.color() + curses.A_REVERSE)
@@ -791,8 +770,8 @@ class ActivityTablePad(VertScrollPad):
 
 
 class ActivityHeaderPad(Pad):
-    _height = 2
-    _width = 20
+    height = 2
+    width = 20
 
     def draw_static(self):
         self.pad.addch(0, 2, "p")
@@ -1067,10 +1046,10 @@ class CleanExit(Exception):
 
 
 def root_frame_init(root_cls, stdscr):
-    term_height, term_width = stdscr.getmaxyx()
-    curses.resize_term(term_height, term_width)
+    termheight, termwidth = stdscr.getmaxyx()
+    curses.resize_term(termheight, termwidth)
     root_frame = object.__new__(root_cls)
-    Frame.__init__(root_frame, 0, 0, height=term_height - 1, width=term_width)
+    Frame.__init__(root_frame, 0, 0, height=termheight - 1, width=termwidth)
     root_cls.__init__(root_frame, stdscr)
     root_frame.refresh()
     return root_frame
@@ -1078,15 +1057,15 @@ def root_frame_init(root_cls, stdscr):
 
 def resize_term(root_frame):
     try:
-        term_height, term_width = root_frame.screen.getmaxyx()
+        termheight, termwidth = root_frame.screen.getmaxyx()
     except AttributeError:
         log.error(
             f"Root frame '{root_frame}' does not have a 'screen' attribute to be able to resize the terminal."
         )
         return
-    curses.resize_term(term_height, term_width)
-    root_frame.height = term_height - 1
-    root_frame.width = term_width
+    curses.resize_term(termheight, termwidth)
+    root_frame.height = termheight - 1
+    root_frame.width = termwidth
     root_frame.resize()
     root_frame.draw_static()
     root_frame.refresh()
