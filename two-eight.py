@@ -456,14 +456,15 @@ class VertScrollPad(Pad):
     scrollpos = 0
 
     def refresh(self):
-        self.pad.refresh(
-            self.scrollpos,
-            0,
-            self.clipuly,
-            self.clipulx,
-            min(self.clipbry, self.clipuly + self.height - 1),
-            self.clipbrx,
-        )
+        if self.refreshable:
+            self.pad.refresh(
+                self.scrollpos,
+                0,
+                self.clipuly,
+                self.clipulx,
+                min(self.clipbry, self.clipuly + self.height - 1),
+                self.clipbrx,
+            )
 
     def resize(self):
         Pad.resize(self)
