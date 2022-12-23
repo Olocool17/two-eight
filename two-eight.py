@@ -145,8 +145,16 @@ class Pad:
                     if isinstance(self.parent, HorzFrame)
                     else self.parent.width
                 ) - 2 * self.parent.bordered
-        if (self.pad is None) or (self.pad.getmaxyx() == (self.height + 1, self.width)):
+        if (self.pad is None) or (
+            self.pad.getmaxyx() == (self.height + 1, self.width)
+            or self.height <= 0
+            or self.width <= 0
+        ):
             self.clip_resize()
+            if self.height <= 0 or self.width <= 0:
+                log.warning(
+                    f"{self.__class__.__name__} has invalid height '{self.height}' and/or width '{self.width}'."
+                )
             return
         self.pad = curses.newpad(self.height + 1, self.width)
         self.clip_resize()
@@ -174,10 +182,6 @@ class Pad:
 
         self.clipheight = self.clipbry - self.clipuly + 1
         self.clipwidth = self.clipbrx - self.clipulx + 1
-        if self.height <= 0 or self.width <= 0:
-            log.warning(
-                f"{self.__class__.__name__} has no height '{self.height}' and/or width '{self.width}' set. This is most likely a mistake."
-            )
         if self.clipheight <= 0 or self.clipwidth <= 0:
             log.warning(
                 f"Cannot draw {self.__class__.__name__} with absolute upper left corner ({self.clipuly, self.clipulx}) and absolute bottom right corner ({self.clipbry, self.clipbrx}) because width or height is zero or negative.  "
@@ -258,7 +262,8 @@ class Frame(Pad):
         Pad.resize(self)
         for child in self.pads:
             child.resize()
-            child.draw_static()
+            if child.refreshable:
+                child.draw_static()
 
     def draw_cornerless_frame(self):
         if not self.bordered:
