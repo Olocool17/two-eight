@@ -305,7 +305,9 @@ class VertFrame(Frame):
         return Frame.create(
             self,
             cls,
-            self.pads[-1].bry + 1 if len(self.pads) > 0 else 1 * self.bordered,
+            self.pads[-1].bry + (1 * (not bordered))
+            if len(self.pads) > 0
+            else 1 * self.bordered,
             1 * self.bordered,
             *args,
             height=height,
@@ -321,7 +323,9 @@ class HorzFrame(Frame):
             self,
             cls,
             1 * self.bordered,
-            self.pads[-1].brx + 1 if len(self.pads) > 0 else 1 * self.bordered,
+            self.pads[-1].brx + (1 * (not bordered))
+            if len(self.pads) > 0
+            else 1 * self.bordered,
             *args,
             height=height,
             width=width,
