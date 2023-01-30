@@ -109,7 +109,9 @@ class Pad:
     height = 0
     width = 0
     stretch_height = False
+    min_height = 0
     stretch_width = False
+    min_width = 0
 
     refreshable = False
 
@@ -126,25 +128,33 @@ class Pad:
             if (
                 self.stretch_height
             ):  # stretch the height of the pad to the parent's remaining height
-                self.height = (
-                    self.parent.height
-                    - sum(e.height for e in self.parent.pads)
-                    + (self.height if self in self.parent.pads else 0)
-                    if isinstance(self.parent, VertFrame)
-                    else self.parent.height
-                ) - 2 * self.parent.bordered
+                self.height = max(
+                    (
+                        self.parent.height
+                        - sum(e.height for e in self.parent.pads)
+                        + (self.height if self in self.parent.pads else 0)
+                        if isinstance(self.parent, VertFrame)
+                        else self.parent.height
+                    )
+                    - 2 * self.parent.bordered,
+                    self.min_height,
+                )
             if (
                 self.stretch_width
             ):  # stretch the width of the pad to the parent's remaining width
-                self.width = (
+                self.width = max(
                     (
-                        self.parent.width
-                        - sum(e.width for e in self.parent.pads)
-                        + (self.width if self in self.parent.pads else 0)
+                        (
+                            self.parent.width
+                            - sum(e.width for e in self.parent.pads)
+                            + (self.width if self in self.parent.pads else 0)
+                        )
+                        if isinstance(self.parent, HorzFrame)
+                        else self.parent.width
                     )
-                    if isinstance(self.parent, HorzFrame)
-                    else self.parent.width
-                ) - 2 * self.parent.bordered
+                    - 2 * self.parent.bordered,
+                    self.min_width,
+                )
         if (self.pad is None) or (
             self.pad.getmaxyx() == (self.height + 1, self.width)
             or self.height <= 0
