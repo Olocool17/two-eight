@@ -49,19 +49,22 @@ class Input:
             )
             return
         self.c = c
-        try:
-            self.controls[c](self.controller)
-        except KeyError:
+        if c not in self.controls:
             if "*" in self.controls:
                 self.controls["*"](self.controller)
+                return
             for e in self.fallback:
                 try:
-                    e.input.process(c)
+                    e.input
                 except AttributeError:
                     log.warning(
                         f"Could not process input '{c}' for {e.__class__.__name__} because it does not have an Input."
                     )
                     continue
+                e.input.process(c)
+
+            return
+        self.controls[c](self.controller)
 
     class InputBreak(Exception):
         pass
@@ -452,9 +455,6 @@ class WeekTab(HorzFrame):
     @input.on_key(ord("u"))
     def activitytable_delete(self):
         activity = self.activitytable.cursor_activity()
-        self.activitytable.draw_activities_markers(
-            *self.timetable.cursor_timeslot(), clear=True
-        )
         for i, y in enumerate(self.weekdata.timetable):
             for j, x in enumerate(y):
                 if x.plan == activity:
@@ -465,7 +465,6 @@ class WeekTab(HorzFrame):
                     self.timetable.draw_timeslot(i, j)
         self.timetable.refresh()
         self.activitytable.delete()
-        self.activitytable.draw_activities_markers(*self.timetable.cursor_timeslot())
         self.activitytable.refresh()
 
     @input.on_key(ord("o"))
@@ -624,41 +623,53 @@ class ActivityTablePad(VertScrollPad):
     def __init__(self, weekdata):
         self.weekdata = weekdata
         self.namewidth = self.width - 12
+        self.copy_activities()
         self.cursor = 0
         self.input.install(self)
 
+    def copy_activities(self):
+        self.activities_names = [e.name for e in self.weekdata.activities]
+        self.activities_colors = [e.color() for e in self.weekdata.activities]
+
     def draw_static(self):
+        self.namewidth = self.width - 12
         self.draw_activities()
         self.draw_cursor()
 
+    def draw_activity(self, i):
+        self.pad.move(i, 11)
+        self.pad.clrtoeol()
+        if self.namewidth > 0:
+            self.pad.addstr(i, 11, self.activities_names[i][-self.namewidth :])
+        self.pad.chgat(i, 0, self.activities_colors[i] + curses.A_REVERSE)
+
     def draw_activities(self):
-        if self.height != len(self.weekdata.activities) + 1:
-            self.height = len(self.weekdata.activities) + 1
+        if self.height != len(self.activities_names) + 1:
+            self.height = len(self.activities_names) + 1
             self.resize()
-        for i, activity in enumerate(self.weekdata.activities):
-            self.pad.addstr(i, 11, activity.name[-self.namewidth :])
-            self.pad.chgat(i, 0, activity.color() + curses.A_REVERSE)
-        self.pad.addstr(len(self.weekdata.activities), 11, self.new_str)
+        for i in range(len(self.activities_names)):
+            self.draw_activity(i)
+        self.pad.addstr(len(self.activities_names), 11, self.new_str)
 
     def draw_activities_markers(self, y, x, clear=False):
         cursor_timeslot = self.weekdata.timetable[y][x]
         char = "x" if not clear else " "
-        for i, activity in enumerate(self.weekdata.activities):
-            if activity == cursor_timeslot.plan:
-                self.pad.addch(i, 2, char, activity.color() + curses.A_REVERSE)
-            if activity == cursor_timeslot.verify:
-                self.pad.addch(i, 5, char, activity.color() + curses.A_REVERSE)
+        for i in range(len(self.activities_names)):
+            if self.weekdata.activities[i] == cursor_timeslot.plan:
+                self.pad.addch(i, 2, char, self.activities_colors[i] + curses.A_REVERSE)
+            if self.weekdata.activities[i] == cursor_timeslot.verify:
+                self.pad.addch(i, 5, char, self.activities_colors[i] + curses.A_REVERSE)
 
     def draw_cursor(self, clear=False):
         char = ">" if not clear else " "
-        if self.cursor < len(self.weekdata.activities):
+        if self.cursor < len(self.activities_names):
             self.pad.addch(
                 self.cursor,
                 8,
                 char,
-                self.cursor_activity().color() + curses.A_REVERSE,
+                self.activities_colors[self.cursor] + curses.A_REVERSE,
             )
-        elif self.cursor == len(self.weekdata.activities):
+        elif self.cursor == len(self.activities_names):
             self.pad.addch(self.cursor, 8, char)
 
     def select(self, d):
@@ -670,15 +681,24 @@ class ActivityTablePad(VertScrollPad):
         self.refresh()
 
     def delete(self):
-        if self.cursor == len(self.weekdata.activities):
+        if self.cursor == len(self.activities_names):
             return
+        self.pad.move(len(self.activities_names), 0)
+        self.pad.clrtoeol()
+        self.refresh()
         self.weekdata.delete_activity(self.cursor_activity())
+        self.copy_activities()
         self.draw_activities()
         self.select(0)
 
     def edit(self):
         is_new = self.cursor_activity() is None
-        activity = Activity("", 0, 0, 0) if is_new else self.cursor_activity()
+        if is_new:
+            activity = Activity("", 0, 0, 0) if is_new else self.cursor_activity()
+            self.activities_names.append(activity.name)
+            self.activities_colors.append(activity.color())
+        else:
+            activity = self.cursor_activity()
         activity_name = self.prompt_name(activity)
         if activity_name != "":
             r, g, b = self.prompt_colors(activity)
@@ -687,16 +707,13 @@ class ActivityTablePad(VertScrollPad):
                 self.weekdata.add_activity(activity)
             self.weekdata.edit_activity(activity, activity_name, r, g, b)
             self.cursor = self.weekdata.activities.index(activity)
+        self.copy_activities()
         self.draw_activities()
         self.select(0)
 
     def prompt_name(self, activity):
-        self.activity_name = activity.name
-        attr = activity.color() + curses.A_REVERSE
-        self.pad.move(self.cursor, 11)
-        self.pad.clrtoeol()
-        self.pad.chgat(self.cursor, 0, attr)
-        self.pad.addstr(self.cursor, 11, self.activity_name[-self.namewidth :], attr)
+        self.activities_names[self.cursor] = activity.name
+        self.draw_activity(self.cursor)
         self.refresh()
         with self.root().input as seizedinput:
 
@@ -706,32 +723,27 @@ class ActivityTablePad(VertScrollPad):
 
             @seizedinput.on_key(curses.KEY_BACKSPACE, ord("\b"))
             def backspace(_):
-                self.activity_name = self.activity_name[:-1]
-                if len(self.activity_name) + 1 <= self.namewidth:
+                self.activities_names[self.cursor] = self.activities_names[self.cursor][
+                    :-1
+                ]
+                if len(self.activities_names[self.cursor]) < self.namewidth:
                     self.pad.addch(
                         self.cursor,
-                        11 + len(self.activity_name),
+                        11 + len(self.activities_names[self.cursor]),
                         " ",
-                        attr,
+                        self.activities_colors[self.cursor],
                     )
+                self.draw_activity(self.cursor)
                 self.refresh()
 
             @seizedinput.on_any()
             def type_char(_):
-                self.activity_name += chr(seizedinput.c)
-
-                self.pad.addstr(
-                    self.cursor,
-                    11,
-                    self.activity_name[-self.namewidth :],
-                    attr,
-                )
+                self.activities_names[self.cursor] += chr(seizedinput.c)
+                self.draw_activity(self.cursor)
                 self.refresh()
 
             seizedinput.start_loop()
-        self.pad.move(self.cursor, 11)
-        self.pad.clrtoeol()
-        return self.activity_name
+        return self.activities_names[self.cursor]
 
     def prompt_colors(self, activity):
         (
@@ -740,23 +752,19 @@ class ActivityTablePad(VertScrollPad):
             b,
         ) = (activity.r, activity.g, activity.b)
         colors_str = [f"{r:03d}", f"{g:03d}", f"{b:03d}"]
-        attr = activity.color() + curses.A_REVERSE
         self.color_index = 0
         self.digit_index = 0
-        self.pad.chgat(self.cursor, 0, attr)
-        self.pad.addstr(
-            self.cursor,
-            11,
-            f"R {colors_str[0]} | G {colors_str[1]} | B {colors_str[2]}",
-            attr,
-        )
+        self.activities_names[
+            self.cursor
+        ] = f"R {colors_str[0]} | G {colors_str[1]} | B {colors_str[2]}"
+        self.draw_activity(self.cursor)
         self.refresh()
 
         with self.root().input as seizedinput:
 
             @seizedinput.on_key(curses.KEY_ENTER, 10, 13)  # new line, carriage return
             def confirm(_):
-                if self.color_index == 2:
+                if self.color_index >= 2:
                     raise seizedinput.InputBreak
                 self.color_index += 1
                 self.digit_index = 0
@@ -768,26 +776,22 @@ class ActivityTablePad(VertScrollPad):
                     + chr(seizedinput.c)
                     + colors_str[self.color_index][self.digit_index + 1 :]
                 )
-                r, g, b = map(int, colors_str)
-                activity.change_color(r, g, b)
                 self.digit_index += 1
                 self.digit_index %= 3
-                self.pad.addstr(
-                    self.cursor,
-                    11,
-                    f"R {colors_str[0]} | G {colors_str[1]} | B {colors_str[2]}",
-                    attr,
-                )
+                r, g, b = map(int, colors_str)
+                activity.change_color(r, g, b)
+                self.activities_colors[self.cursor] = activity.color()
+                self.activities_names[
+                    self.cursor
+                ] = f"R {colors_str[0]} | G {colors_str[1]} | B {colors_str[2]}"
+                self.draw_activity(self.cursor)
                 self.refresh()
 
             seizedinput.start_loop()
-
-        self.pad.move(self.cursor, 11)
-        self.pad.clrtoeol()
         return r, g, b
 
     def cursor_activity(self):
-        if self.cursor < len(self.weekdata.activities):
+        if self.cursor < len(self.activities_names):
             return self.weekdata.activities[self.cursor]
         return None
 
