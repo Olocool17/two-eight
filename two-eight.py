@@ -109,9 +109,10 @@ class Pad:
     height = 0
     width = 0
     stretch_height = False
-    min_height = 0
     stretch_width = False
+    min_height = 0
     min_width = 0
+    z = 0
 
     refreshable = False
 
@@ -244,6 +245,7 @@ class Frame(Pad):
             if cls.__init__ is not Frame.__init__:
                 cls.__init__(new_frame, *args, **kwargs)
             self.pads.append(new_frame)
+            self.pads.sort(key=lambda x: x.z, reverse=True)
             new_frame.draw_static()
             return new_frame
         elif issubclass(cls, Pad):
@@ -252,6 +254,7 @@ class Frame(Pad):
             if cls.__init__ is not Pad.__init__:
                 cls.__init__(new_pad, *args, **kwargs)
             self.pads.append(new_pad)
+            self.pads.sort(key=lambda x: x.z, reverse=True)
             new_pad.draw_static()
             return new_pad
         log.error(
@@ -265,7 +268,7 @@ class Frame(Pad):
     def refresh(self):
         if self.bordered:
             Pad.refresh(self)
-        for child in self.pads:
+        for child in self.pads[::-1]:
             child.refresh()
 
     def resize(self):
