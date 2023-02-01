@@ -340,16 +340,37 @@ class HorzFrame(Frame):
         )
 
 
-class TwoEight(VertFrame):
+class RootFrame(Frame):
     input = Input()
 
+    def __init__(self, stdscr):
+        termheight, termwidth = stdscr.getmaxyx()
+        curses.resize_term(termheight, termwidth)
+        self.screen = stdscr
+        Frame.__init__(self, 0, 0, height=termheight - 1, width=termwidth)
+
+    @input.on_key(curses.KEY_RESIZE)
+    def resize_term(self):
+        termheight, termwidth = self.screen.getmaxyx()
+        curses.resize_term(termheight, termwidth)
+        self.height = termheight - 1
+        self.width = termwidth
+        self.resize()
+        self.draw_static()
+        self.refresh()
+
+
+class TwoEight(VertFrame, RootFrame):
+    input = RootFrame.input
+
     def __init__(self, screen):
-        self.screen = screen
+        RootFrame.__init__(self, screen)
         first_weekdata = WeekData.dummy(48)
         self.weekdatas = {(first_weekdata.year, first_weekdata.week): first_weekdata}
         self.header = self.create(HeaderPad)
         self.tabs = [self.create(WeekTab, first_weekdata)]
         self.current_tab = self.tabs[-1]
+        self.refresh()
         self.switch_tab()
 
     @input.on_key(ord("\t"))
@@ -359,10 +380,6 @@ class TwoEight(VertFrame):
         ]
         self.header.draw_tab(self.current_tab)
         self.input.install(self, fallback=(self.current_tab,), screen=self.screen)
-
-    @input.on_key(curses.KEY_RESIZE)
-    def resize_term(self):
-        resize_term(self)
 
     @input.on_key(3)  # Crtl + C
     def exit(self):
@@ -1072,32 +1089,6 @@ class CleanExit(Exception):
     pass
 
 
-def root_frame_init(root_cls, stdscr):
-    termheight, termwidth = stdscr.getmaxyx()
-    curses.resize_term(termheight, termwidth)
-    root_frame = object.__new__(root_cls)
-    Frame.__init__(root_frame, 0, 0, height=termheight - 1, width=termwidth)
-    root_cls.__init__(root_frame, stdscr)
-    root_frame.refresh()
-    return root_frame
-
-
-def resize_term(root_frame):
-    try:
-        termheight, termwidth = root_frame.screen.getmaxyx()
-    except AttributeError:
-        log.error(
-            f"Root frame '{root_frame}' does not have a 'screen' attribute to be able to resize the terminal."
-        )
-        return
-    curses.resize_term(termheight, termwidth)
-    root_frame.height = termheight - 1
-    root_frame.width = termwidth
-    root_frame.resize()
-    root_frame.draw_static()
-    root_frame.refresh()
-
-
 def main(stdscr):
     log.info(f"Terminal has color support: {curses.has_colors()}")
     log.info(
@@ -1109,7 +1100,7 @@ def main(stdscr):
     curses.use_default_colors()
     curses.curs_set(0)
     stdscr.leaveok(False)
-    twoeight = root_frame_init(TwoEight, stdscr)
+    twoeight = TwoEight(stdscr)
     try:
         twoeight.input.start_loop()
     except CleanExit:
