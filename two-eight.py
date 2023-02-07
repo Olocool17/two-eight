@@ -124,7 +124,11 @@ class Pad:
         self.uly, self.ulx = uly, ulx
         self.height = height if height is not None else self.height
         self.width = width if width is not None else self.width
-        self.pad = curses.newpad(self.height + 1, self.width) if init_pad else None
+        self.pad = (
+            curses.newpad(max(1, self.height + 1), max(1, self.width))
+            if init_pad
+            else None
+        )
         Pad.resize(self)
 
     def resize(self):
@@ -347,13 +351,15 @@ class RootFrame(Frame):
         termheight, termwidth = stdscr.getmaxyx()
         curses.resize_term(termheight, termwidth)
         self.screen = stdscr
-        Frame.__init__(self, 0, 0, height=termheight - 1, width=termwidth)
+        Frame.__init__(self, 0, 0, height=termheight, width=termwidth)
+        # should be termheight - 1 on windows?
 
     @input.on_key(curses.KEY_RESIZE)
     def resize_term(self):
         termheight, termwidth = self.screen.getmaxyx()
         curses.resize_term(termheight, termwidth)
-        self.height = termheight - 1
+        self.screen.refresh()  # clear the screen
+        self.height = termheight  # should be termheight - 1 on windows?
         self.width = termwidth
         self.resize()
         self.draw_static()
@@ -370,8 +376,8 @@ class TwoEight(VertFrame, RootFrame):
         self.header = self.create(HeaderPad)
         self.tabs = [self.create(WeekTab, first_weekdata)]
         self.current_tab = self.tabs[-1]
-        self.refresh()
         self.switch_tab()
+        self.refresh()
 
     @input.on_key(ord("\t"))
     def switch_tab(self):
@@ -1100,6 +1106,7 @@ def main(stdscr):
     curses.use_default_colors()
     curses.curs_set(0)
     stdscr.leaveok(False)
+    stdscr.refresh()  # refresh the stdscr window, otherwise this is implicitly called on first stdscr.getch()
     twoeight = TwoEight(stdscr)
     try:
         twoeight.input.start_loop()
