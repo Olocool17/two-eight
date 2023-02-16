@@ -181,12 +181,12 @@ class Pad:
         if self.parent is not None:
             self.bry = min(
                 self.uly + self.height - 1,
-                self.parent.height - 1 - 1 * self.parent.bordered,
+                self.parent.clipheight - 1 - 1 * self.parent.bordered,
                 *(e.uly - 1 for e in self.parent.pads if e.uly > self.uly),
             )
             self.brx = min(
                 self.ulx + self.width - 1,
-                self.parent.width - 1 - 1 * self.parent.bordered,
+                self.parent.clipwidth - 1 - 1 * self.parent.bordered,
                 *(e.ulx - 1 for e in self.parent.pads if e.ulx > self.ulx),
             )
             self.clipuly = self.uly + self.parent.clipuly
@@ -201,9 +201,12 @@ class Pad:
         self.clipheight = self.clipbry - self.clipuly + 1
         self.clipwidth = self.clipbrx - self.clipulx + 1
         if self.clipheight <= 0 or self.clipwidth <= 0:
-            log.warning(
-                f"Cannot draw {self.__class__.__name__} with absolute upper left corner ({self.clipuly, self.clipulx}) and absolute bottom right corner ({self.clipbry, self.clipbrx}) because width or height is zero or negative.  "
-            )
+            if (
+                self.parent.refreshable
+            ):  # otherwise a lot of duplicate warnings from children
+                log.warning(
+                    f"Cannot draw {self.__class__.__name__} with absolute upper left corner ({self.clipuly, self.clipulx}) and absolute bottom right corner ({self.clipbry, self.clipbrx}) because width or height is zero or negative.  "
+                )
             self.refreshable = False
         else:
             self.refreshable = True
@@ -831,6 +834,7 @@ class ActivityHeaderPad(Pad):
 class ActivityFrame(VertFrame):
     stretch_width = True
     stretch_height = True
+    min_width = 30
 
     def __init__(self, weekdata):
         self.weekdata = weekdata
