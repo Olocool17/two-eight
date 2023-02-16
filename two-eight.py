@@ -352,14 +352,13 @@ class RootFrame(Frame):
         curses.resize_term(termheight, termwidth)
         self.screen = stdscr
         Frame.__init__(self, 0, 0, height=termheight, width=termwidth)
-        # should be termheight - 1 on windows?
 
     @input.on_key(curses.KEY_RESIZE)
     def resize_term(self):
         termheight, termwidth = self.screen.getmaxyx()
         curses.resize_term(termheight, termwidth)
         self.screen.refresh()  # clear the screen
-        self.height = termheight  # should be termheight - 1 on windows?
+        self.height = termheight
         self.width = termwidth
         self.resize()
         self.draw_static()
