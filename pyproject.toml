@@ -15,6 +15,9 @@ windows-curses = {version = "^2.3.0", platform = "windows"}
 pylint = "^2.15.4"
 black = "^22.10.0"
 
+[tool.black]
+line-length = 150
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
