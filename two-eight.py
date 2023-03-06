@@ -372,9 +372,12 @@ class Frame(Pad):
 
         clip_list.append(main_length(self))
 
+        last_bordered = False
         for child, start_clip, end_clip in zip(self.pads, clip_list[:-1], clip_list[1:]):
-            child_resize_main(child, start_clip, end_clip)
+            current_bordered = child.bordered if isinstance( child, Frame) else False
+            child_resize_main(child, start_clip - 1*(last_bordered and current_bordered), end_clip - 1)
             child_resize_off(child, 0, off_length - 1)
+            last_bordered = current_bordered
 
         if self.bordered:
             self.height += 2
