@@ -4,6 +4,7 @@ import locale
 import logging
 
 from random import randrange, seed
+from enum import Enum
 
 seed()
 
@@ -44,9 +45,7 @@ class Input:
 
     def process(self, c):
         if self.controller is None:
-            log.warning(
-                f"Could not process input '{c}' for {self} because it does not have a controller installed."
-            )
+            log.warning(f"Could not process input '{c}' for {self} because it does not have a controller installed.")
             return
         self.c = c
         if c not in self.controls:
@@ -57,9 +56,7 @@ class Input:
                 try:
                     e.input
                 except AttributeError:
-                    log.warning(
-                        f"Could not process input '{c}' for {e.__class__.__name__} because it does not have an Input."
-                    )
+                    log.warning(f"Could not process input '{c}' for {e.__class__.__name__} because it does not have an Input.")
                     continue
                 e.input.process(c)
 
@@ -71,9 +68,7 @@ class Input:
 
     def start_loop(self):
         if self.screen is None:
-            log.warning(
-                f"Could not start input loop for {self} because it does not have a screen installed."
-            )
+            log.warning(f"Could not start input loop for {self} because it does not have a screen installed.")
             return
         try:
             while True:
@@ -103,200 +98,293 @@ class Input:
         return func
 
     def __str__(self):
-        return (
-            f"Input for controller '{self.controller}' and fallback '{self.fallback}'"
-        )
+        return f"Input for controller '{self.controller}' and fallback '{self.fallback}'"
 
 
 class Pad:
+    JUSTIFY = Enum("JUSTIFY", ["LEFT", "CENTER", "RIGHT"])
+
     height = 0
     width = 0
-    stretch_height = False
-    stretch_width = False
+    # Dimensions of curses pad object
+
+    uly = 0
+    ulx = 0
+    bry = 0
+    brx = 0
+    # Coordinates relative to frame origin
+
+    justify_x = JUSTIFY.LEFT
+    justify_y = JUSTIFY.LEFT
+    # How does the pad justify itself within the space given by the parent?
+
+    stretch_clipheight = False
+    stretch_clipwidth = False
+    # Determines if curses pad object should stretch to fit the clip and just dimensions provided by the parent frame
+
     min_height = 0
     min_width = 0
-    z = 0
+    # Minimum dimensions of curses pad object if stretch is enabled
+
+    max_height = 0
+    max_width = 0
+    # Maximum dimensions of curses pad object if stretch is enabled
+
+    floating = False
+    # Determines if pad should be aligned with other pads by the parent frame or positioned absolutely (TODO)
 
     refreshable = False
 
-    def __init__(self, uly, ulx, height=None, width=None, parent=None, init_pad=True):
+    input = None
+
+    def __init__(self, parent=None, init_pad=True):
         self.parent = parent
-        self.uly, self.ulx = uly, ulx
-        self.height = height if height is not None else self.height
-        self.width = width if width is not None else self.width
-        self.pad = (
-            curses.newpad(max(1, self.height + 1), max(1, self.width))
-            if init_pad
-            else None
-        )
-        Pad.resize(self)
+        self.init_pad = init_pad
+        self.pad = None
 
     def resize(self):
-        if self.parent is not None:
-            if (
-                self.stretch_height
-            ):  # stretch the height of the pad to the parent's remaining height
-                self.height = max(
-                    (
-                        self.parent.height
-                        - sum(e.height for e in self.parent.pads)
-                        + (self.height if self in self.parent.pads else 0)
-                        if isinstance(self.parent, VertFrame)
-                        else self.parent.height
-                    )
-                    - 2 * self.parent.bordered,
-                    self.min_height,
-                )
-            if (
-                self.stretch_width
-            ):  # stretch the width of the pad to the parent's remaining width
-                self.width = max(
-                    (
-                        (
-                            self.parent.width
-                            - sum(e.width for e in self.parent.pads)
-                            + (self.width if self in self.parent.pads else 0)
-                        )
-                        if isinstance(self.parent, HorzFrame)
-                        else self.parent.width
-                    )
-                    - 2 * self.parent.bordered,
-                    self.min_width,
-                )
-        if (self.pad is None) or (
-            self.pad.getmaxyx() == (self.height + 1, self.width)
-            or self.height <= 0
-            or self.width <= 0
-        ):
-            self.clip_resize()
-            if self.height <= 0 or self.width <= 0:
-                log.warning(
-                    f"{self.__class__.__name__} has invalid height '{self.height}' and/or width '{self.width}'."
-                )
-            return
-        self.pad = curses.newpad(self.height + 1, self.width)
-        self.clip_resize()
-
-    def clip_resize(self):
-        if self.parent is not None:
-            self.bry = min(
-                self.uly + self.height - 1,
-                self.parent.clipheight - 1 - 1 * self.parent.bordered,
-                *(e.uly - 1 for e in self.parent.pads if e.uly > self.uly),
-            )
-            self.brx = min(
-                self.ulx + self.width - 1,
-                self.parent.clipwidth - 1 - 1 * self.parent.bordered,
-                *(e.ulx - 1 for e in self.parent.pads if e.ulx > self.ulx),
-            )
-            self.clipuly = self.uly + self.parent.clipuly
-            self.clipulx = self.ulx + self.parent.clipulx
-            self.clipbry = self.bry + self.parent.clipuly
-            self.clipbrx = self.brx + self.parent.clipulx
-        else:
-            self.bry, self.brx = self.uly + self.height - 1, self.ulx + self.width - 1
-            self.clipuly, self.clipulx = self.uly, self.ulx
-            self.clipbry, self.clipbrx = self.bry, self.brx
-
-        self.clipheight = self.clipbry - self.clipuly + 1
-        self.clipwidth = self.clipbrx - self.clipulx + 1
+        self.clipheight = self.bry - self.uly + 1
+        self.clipwidth = self.brx - self.ulx + 1
         if self.clipheight <= 0 or self.clipwidth <= 0:
-            if (
-                self.parent.refreshable
-            ):  # otherwise a lot of duplicate warnings from children
-                log.warning(
-                    f"Cannot draw {self.__class__.__name__} with absolute upper left corner ({self.clipuly, self.clipulx}) and absolute bottom right corner ({self.clipbry, self.clipbrx}) because width or height is zero or negative.  "
-                )
+            log.warning(
+                f"Cannot draw {self.__class__.__name__} with frame-relative upper left corner ({self.uly, self.ulx}) and frame-relative bottom right corner ({self.bry, self.brx}) because clip width or height is zero or negative.  "
+            )
             self.refreshable = False
+            return
         else:
-            self.refreshable = True
+            self.refreshable = True if self.parent is None else self.parent.refreshable
+
+        # Perform pad stretching to clip dimensions
+        if self.parent is not None:
+            if self.stretch_clipheight:
+                self.height = max(self.clipheight, self.min_height)
+                if self.max_height > 0:
+                    self.height = min(self.height, self.max_height)
+            if self.stretch_clipwidth:
+                self.width = max(self.clipwidth, self.min_width)
+                if self.max_width > 0:
+                    self.width = min(self.width, self.max_width)
+        else:
+            self.height = self.clipheight
+            self.width = self.clipwidth
+
+        if self.height <= 0 or self.width <= 0:
+            log.warning(f"{self.__class__.__name__} has invalid pad height '{self.height}' and/or width '{self.width}'.")
+            self.refreshable = False
+            return
+
+        # Calculate absolute coordinates used in refresh
+        self.resize_abs()
+
+        # (Re)create cursed pad object if height/width was changed
+        if (not self.init_pad) or ((self.pad is not None) and (self.pad.getmaxyx() == (self.height + 1, self.width))):
+            return
+
+        self.pad = curses.newpad(self.height + 1, self.width)
+
+        # (Re)draw static content of the pad
+        self.draw_static()
+
+    def resize_abs(self):
+        # Calculate justification offset
+        match self.justify_y:
+            case Pad.JUSTIFY.LEFT:
+                self.justy = 0
+                self.absuly = self.uly
+                self.absbry = min(self.uly + self.height - 1, self.bry)
+            case Pad.JUSTIFY.CENTER:
+                self.justy = max(self.height - self.clipheight, 0) // 2
+                self.absuly = max(self.uly + (self.clipheight - self.height) // 2, self.uly)
+                self.absbry = min(self.bry - (self.clipheight - self.height) // 2, self.bry)
+            case Pad.JUSTIFY.RIGHT:
+                self.justy = max(self.height - self.clipheight, 0)
+                self.absuly = max(self.bry - self.height + 1, self.uly)
+                self.absbry = self.bry
+
+        match self.justify_x:
+            case Pad.JUSTIFY.LEFT:
+                self.justx = 0
+                self.absulx = self.ulx
+                self.absbrx = min(self.ulx + self.width - 1, self.brx)
+            case Pad.JUSTIFY.CENTER:
+                self.justx = max(self.width - self.clipwidth, 0) // 2
+                self.absulx = max(self.ulx + (self.clipwidth - self.width) // 2, self.ulx)
+                self.absbrx = min(self.brx - (self.clipwidth - self.width) // 2, self.brx)
+            case Pad.JUSTIFY.RIGHT:
+                self.justx = max(self.width - self.clipwidth, 0)
+                self.absulx = max(self.brx - self.width + 1, self.ulx)
+                self.absbrx = self.brx
+
+        # Calculate absolute screen coordinates from frame-relative coordinates
+        if self.parent is not None:
+            self.justy = max(self.justy, self.parent.justy)
+            self.justx = max(self.justx, self.parent.justx)
+
+            self.absuly = min(self.absuly + self.parent.absuly, self.parent.absbry)
+            self.absulx = min(self.absulx + self.parent.absulx, self.parent.absbrx)
+            self.absbry = min(self.absbry + self.parent.absuly, self.parent.absbry)
+            self.absbrx = min(self.absbrx + self.parent.absulx, self.parent.absbrx)
 
     def draw_static(self):
         pass
 
-    def root(self):
-        return self.parent.root() if self.parent is not None else self
-
     def refresh(self):
         if self.refreshable:
             self.pad.refresh(
-                0,
-                0,
-                self.clipuly,
-                self.clipulx,
-                self.clipbry,
-                self.clipbrx,
+                self.justy,
+                self.justx,
+                self.absuly,
+                self.absulx,
+                self.absbry,
+                self.absbrx,
             )
+
+    def root(self):
+        return self.parent.root() if self.parent is not None else self
 
 
 class Frame(Pad):
-    def __init__(self, uly, ulx, height=None, width=None, parent=None, bordered=False):
-        # if not bordered, curses pad is not required
+    AXIS = Enum("AXIS", ["Y", "X"])
+    SIZING = Enum("SIZING", ["FIT", "FILL", "FIXED"])
+    ALIGNMENT = Enum("ALIGNMENT", ["SNUG", "EVEN"])
+    JUSTIFY = Enum("JUSTIFY", ["LEFT", "CENTER", "RIGHT"])
+
+    main_axis = AXIS.Y
+    # Along which axis should the frame place its pads?
+
+    sizing_y = SIZING.FILL
+    sizing_x = SIZING.FILL
+    # Determines how the frame should orchestrate its own height and width
+    # FIT: Fit the frame around its children
+    # FILL: Let the frame fill the space provided by the parent
+    # FIXED: Keep the frame dimensions constant
+
+    alignment = ALIGNMENT.SNUG
+    # Determines how the frame should distribute main axis space among its children
+    # SNUG: Give all leftover space to last and/or first added child
+    # EVEN: Give all space evenly to each child
+
+    alignment_justify = JUSTIFY.LEFT
+    # Determines how the distributed main axis space should be justified
+
+    bordered = False
+
+    spawning = False
+
+    def __init__(self, parent=None):
+        if self.sizing_y == Frame.SIZING.FILL:
+            self.stretch_clipheight = True
+        if self.sizing_x == Frame.SIZING.FILL:
+            self.stretch_clipwidth = True
+
         self.pads = []
-        self.bordered = bordered
-        Pad.__init__(
-            self, uly, ulx, height=height, width=width, parent=parent, init_pad=bordered
-        )
+        Pad.__init__(self, parent=parent, init_pad=self.bordered)
 
-    def create(
-        self, cls, uly, ulx, *args, height=None, width=None, bordered=False, **kwargs
-    ):
-        if issubclass(cls, Frame):
-            new_frame = object.__new__(cls, *args, **kwargs)
-            Frame.__init__(
-                new_frame,
-                uly,
-                ulx,
-                parent=self,
-                height=height,
-                width=width,
-                bordered=bordered,
-            )
-            if cls.__init__ is not Frame.__init__:
-                cls.__init__(new_frame, *args, **kwargs)
-            self.pads.append(new_frame)
-            self.pads.sort(key=lambda x: x.z, reverse=True)
-            new_frame.draw_static()
-            return new_frame
-        elif issubclass(cls, Pad):
-            new_pad = object.__new__(cls, *args, **kwargs)
-            Pad.__init__(new_pad, uly, ulx, parent=self, height=height, width=width)
-            if cls.__init__ is not Pad.__init__:
-                cls.__init__(new_pad, *args, **kwargs)
-            self.pads.append(new_pad)
-            self.pads.sort(key=lambda x: x.z, reverse=True)
-            new_pad.draw_static()
-            return new_pad
-        log.error(
-            f"Could not add '{cls.__name__}' to frame '{self.__class__.__name__}' because it is neither a {Frame.__name__} nor a {Pad.__name__}."
-        )
+    def spawn(self, pad):
+        if isinstance(pad, Frame):
+            Frame.__init__(pad, parent=self)
+            pad.spawner_wrapper()
+        elif isinstance(pad, Pad):
+            Pad.__init__(pad, parent=self)
+        else:
+            log.error(f"Could not spawn {pad} because it is not a valid Frame or Pad.")
+            return
+        self.pads.append(pad)
+        if not self.spawning:
+            self.fit_resize()
+            self.resize()
 
-    def draw_static(self):
-        if self.bordered:
-            self.draw_cornerless_frame()
+        if pad.input is not None:
+            pad.input.install(pad)
 
-    def refresh(self):
-        if self.bordered:
-            Pad.refresh(self)
-        for child in self.pads[::-1]:
-            child.refresh()
+        return pad
+
+    def spawner_wrapper(self):
+        self.spawning = True
+        self.spawner()
+        self.spawning = False
+        self.fit_resize()
+
+    def spawner(self):
+        pass
+
+    def fit_resize(self):
+        if self.sizing_y == Frame.SIZING.FIT:
+            if self.main_axis == Frame.AXIS.X:
+                self.height = max(child.height for child in self.pads) + 2 * self.bordered
+            elif self.main_axis == Frame.AXIS.Y:
+                self.height = sum(child.height for child in self.pads) + 2 * self.bordered
+        if self.sizing_x == Frame.SIZING.FIT:
+            if self.main_axis == Frame.AXIS.Y:
+                self.width = max(child.width for child in self.pads) + 2 * self.bordered
+            elif self.main_axis == Frame.AXIS.X:
+                self.width = sum(child.width for child in self.pads) + 2 * self.bordered
 
     def resize(self):
         Pad.resize(self)
-        for child in self.pads:
-            child.resize()
-            if child.refreshable:
-                child.draw_static()
 
-    def draw_cornerless_frame(self):
+        if self.bordered:
+            self.width -= 2
+            self.height -= 2
+
+        def child_resize_y(child, uly, bry):
+            child.uly = max(min(uly, self.height), 0) + 1 * self.bordered
+            child.bry = max(min(bry, self.height - 1), -1) + 1 * self.bordered
+
+        def child_resize_x(child, ulx, brx):
+            child.ulx = max(min(ulx, self.width), 0) + 1 * self.bordered
+            child.brx = max(min(brx, self.width - 1), -1) + 1 * self.bordered
+
+        if self.main_axis == Frame.AXIS.Y:
+            child_resize_main = child_resize_y
+            child_resize_off = child_resize_x
+            main_length = lambda x: x.height
+            off_length = self.width
+        elif self.main_axis == Frame.AXIS.X:
+            child_resize_main = child_resize_x
+            child_resize_off = child_resize_y
+            main_length = lambda x: x.width
+            off_length = self.height
+
+        clip_list = [0]
+        match self.alignment:
+            case Frame.ALIGNMENT.SNUG:
+                match self.alignment_justify:
+                    case Frame.JUSTIFY.LEFT:
+                        coord = 0
+
+                    case Frame.JUSTIFY.RIGHT:
+                        coord = main_length(self) - sum(main_length(child) for child in self.pads)
+
+                    case Frame.JUSTIFY.CENTER:
+                        coord = (main_length(self) - sum(main_length(child) for child in self.pads)) // 2
+
+                for child in self.pads[:-1]:
+                    coord += main_length(child)
+                    clip_list.append(coord)
+
+            case Frame.ALIGNMENT.EVEN:
+                coord = 0
+                child_space = main_length(self) // len(self.pads)
+                for child in self.pads[:-1]:
+                    coord += child_space
+                    clip_list.append(coord)
+
+        clip_list.append(main_length(self))
+
+        for child, start_clip, end_clip in zip(self.pads, clip_list[:-1], clip_list[1:]):
+            child_resize_main(child, start_clip, end_clip)
+            child_resize_off(child, 0, off_length - 1)
+
+        if self.bordered:
+            self.height += 2
+            self.width += 2
+        if not self.spawning:
+            for child in self.pads:
+                child.resize()
+
+    def draw_static(self):
         if not self.bordered:
-            return
-        try:
-            self.pad
-        except AttributeError:
-            log.error(
-                f"Frame '{self.__class__.__name__} could not draw frame because it does not have a curses pad associated with it.'"
-            )
             return
         # # is a placeholder corner character
         self.pad.addch(0, 0, 35)  # paint # in
@@ -312,81 +400,50 @@ class Frame(Pad):
             self.pad.addch(0, x, "─")
             self.pad.addch(self.height - 1, x, "─")
 
-
-class VertFrame(Frame):
-    def create(self, cls, *args, height=None, width=None, bordered=False, **kwargs):
-        return Frame.create(
-            self,
-            cls,
-            self.pads[-1].bry + (1 * (not bordered))
-            if len(self.pads) > 0
-            else 1 * self.bordered,
-            1 * self.bordered,
-            *args,
-            height=height,
-            width=width,
-            bordered=bordered,
-            **kwargs,
-        )
-
-
-class HorzFrame(Frame):
-    def create(self, cls, *args, height=None, width=None, bordered=False, **kwargs):
-        return Frame.create(
-            self,
-            cls,
-            1 * self.bordered,
-            self.pads[-1].brx + (1 * (not bordered))
-            if len(self.pads) > 0
-            else 1 * self.bordered,
-            *args,
-            height=height,
-            width=width,
-            bordered=bordered,
-            **kwargs,
-        )
+    def refresh(self):
+        if not self.refreshable:
+            return
+        if self.bordered:
+            Pad.refresh(self)
+        for child in self.pads:
+            child.refresh()
 
 
 class RootFrame(Frame):
     input = Input()
 
     def __init__(self, stdscr):
-        termheight, termwidth = stdscr.getmaxyx()
-        curses.resize_term(termheight, termwidth)
         self.screen = stdscr
-        Frame.__init__(self, 0, 0, height=termheight, width=termwidth)
+        Frame.__init__(self)
+        self.spawner_wrapper()
+        self.resize_term()
 
     @input.on_key(curses.KEY_RESIZE)
     def resize_term(self):
         termheight, termwidth = self.screen.getmaxyx()
         curses.resize_term(termheight, termwidth)
         self.screen.refresh()  # clear the screen
-        self.height = termheight
-        self.width = termwidth
+        self.uly, self.ulx = 0, 0
+        self.bry, self.brx = termheight - 1, termwidth - 1
         self.resize()
-        self.draw_static()
         self.refresh()
 
 
-class TwoEight(VertFrame, RootFrame):
+class TwoEight(RootFrame):
     input = RootFrame.input
 
-    def __init__(self, screen):
-        RootFrame.__init__(self, screen)
+    def spawner(self):
         first_weekdata = WeekData.dummy(48)
         self.weekdatas = {(first_weekdata.year, first_weekdata.week): first_weekdata}
-        self.header = self.create(HeaderPad)
-        self.tabs = [self.create(WeekTab, first_weekdata)]
+        self.header = self.spawn(HeaderPad(self))
+        self.tabs = [self.spawn(WeekTab(first_weekdata))]
         self.current_tab = self.tabs[-1]
-        self.switch_tab()
-        self.refresh()
+        self.input.install(self, fallback=(self.current_tab,), screen=self.screen)
 
     @input.on_key(ord("\t"))
     def switch_tab(self):
-        self.current_tab = self.tabs[
-            (self.tabs.index(self.current_tab) + 1) % len(self.tabs)
-        ]
-        self.header.draw_tab(self.current_tab)
+        self.current_tab = self.tabs[(self.tabs.index(self.current_tab) + 1) % len(self.tabs)]
+        self.header.draw_static()
         self.input.install(self, fallback=(self.current_tab,), screen=self.screen)
 
     @input.on_key(3)  # Crtl + C
@@ -399,31 +456,30 @@ class HeaderPad(Pad):
     height = 1
     width = 30
 
+    def __init__(self, root):
+        self.root = root
+
     def draw_static(self):
         self.pad.addstr(0, 0, "two-eight", curses.A_REVERSE)
         self.pad.addch("")
-
-    def draw_tab(self, tab):
-        if isinstance(tab, WeekTab):
+        if isinstance(self.root.current_tab, WeekTab):
             self.pad.addch(" ")
-            self.pad.addstr(f"week {tab.weekdata.year}|{tab.weekdata.week}")
+            self.pad.addstr(f"week {self.root.current_tab.weekdata.year}|{self.root.current_tab.weekdata.week}")
 
 
-class WeekTab(HorzFrame):
-    stretch_height = True
-    stretch_width = True
+class WeekTab(Frame):
+    main_axis = Frame.AXIS.X
 
     input = Input()
 
     def __init__(self, weekdata):
         self.weekdata = weekdata
-        self.timetableframe = self.create(
-            TimetableFrame, weekdata, width=50, bordered=True
-        )
-        self.activityframe = self.create(ActivityFrame, weekdata, bordered=True)
+
+    def spawner(self):
+        self.timetableframe = self.spawn(TimetableFrame(self.weekdata))
+        self.activityframe = self.spawn(ActivityFrame(self.weekdata))
         self.timetable = self.timetableframe.timetable
         self.activitytable = self.activityframe.activitytable
-        self.input.install(self)
 
     def draw_static(self):
         super().draw_static()
@@ -446,9 +502,7 @@ class WeekTab(HorzFrame):
         self.timetable_select(0, 1)
 
     def timetable_select(self, d_y, d_x):
-        self.activitytable.draw_activities_markers(
-            *self.timetable.cursor_timeslot(), clear=True
-        )
+        self.activitytable.draw_activities_markers(*self.timetable.cursor_timeslot(), clear=True)
         self.timetable.cursor_y += d_y
         self.timetable.cursor_x += d_x
         self.timetable.select(shift=chr(self.input.c).isupper())
@@ -459,9 +513,7 @@ class WeekTab(HorzFrame):
     def assign(self):
         verify = self.input.c == ord("e")
         activity = self.activitytable.cursor_activity()
-        self.activitytable.draw_activities_markers(
-            *self.timetable.cursor_timeslot(), clear=True
-        )
+        self.activitytable.draw_activities_markers(*self.timetable.cursor_timeslot(), clear=True)
         for y, x in self.timetable.selected:
             self.weekdata.assign(y, x, activity, verify=verify)
             self.timetable.draw_timeslot(y, x)
@@ -504,12 +556,12 @@ class VertScrollPad(Pad):
     def refresh(self):
         if self.refreshable:
             self.pad.refresh(
-                self.scrollpos,
-                0,
-                self.clipuly,
-                self.clipulx,
-                min(self.clipbry, self.clipuly + self.height - 1),
-                self.clipbrx,
+                self.justy + self.scrollpos,
+                self.justx,
+                self.absuly,
+                self.absulx,
+                min(self.absbry, self.absuly + self.height - 1),
+                self.absbrx,
             )
 
     def resize(self):
@@ -529,20 +581,19 @@ class VertScrollPad(Pad):
 
 
 class TimetablePad(VertScrollPad):
-    stretch_width = True
+    width = 48
 
     def __init__(self, weekdata):
         self.weekdata = weekdata
+        self.height = weekdata.nr_timesegments
         self.cursor_y, self.cursor_x = 0, 0
         self.hold_cursor_y, self.hold_cursor_x = self.cursor_y, self.cursor_x
         self.selected = ((self.cursor_y, self.cursor_x),)
 
     def draw_static(self):
-        for i in range(0, self.weekdata.nr_timesegments):
-            minutes = int(i * (24 / self.weekdata.nr_timesegments) * 60)
-            self.pad.addstr(
-                i, 0, f"{minutes // 60:02d}:{minutes % 60:02d}", curses.A_DIM
-            )
+        for i in range(0, self.height):
+            minutes = int(i * (24 / self.height) * 60)
+            self.pad.addstr(i, 0, f"{minutes // 60:02d}:{minutes % 60:02d}", curses.A_DIM)
         self.draw_selected()
         for y in range(len(self.weekdata.timetable)):
             for x in range(len(self.weekdata.timetable[0])):
@@ -570,9 +621,7 @@ class TimetablePad(VertScrollPad):
             self.pad.addch(y, timewidth + x * 6, select_char)
             self.pad.addch(y, timewidth + x * 6 + slotwidth + 1, select_char)
         self.pad.addch(self.cursor_y, timewidth + self.cursor_x * 6, ">")
-        self.pad.addch(
-            self.cursor_y, timewidth + self.cursor_x * 6 + slotwidth + 1, "<"
-        )
+        self.pad.addch(self.cursor_y, timewidth + self.cursor_x * 6 + slotwidth + 1, "<")
 
     def select(self, shift=False):
         self.cursor_y %= self.height
@@ -604,15 +653,13 @@ class TimetablePad(VertScrollPad):
 
 class TimetableHeaderPad(Pad):
     height = 3
-    stretch_width = True
+    width = 48
 
     def __init__(self, weekdata):
         self.weekdata = weekdata
 
     def draw_static(self):
-        weekdate = self.weekdata.date - datetime.timedelta(
-            days=self.weekdata.date.weekday()
-        )
+        weekdate = self.weekdata.date - datetime.timedelta(days=self.weekdata.date.weekday())
         month = weekdate.strftime("%b")
         self.pad.addstr(0, 5 - len(month), month)
         year = weekdate.strftime("%Y")
@@ -623,34 +670,32 @@ class TimetableHeaderPad(Pad):
             weekdate += datetime.timedelta(days=1)
 
 
-class TimetableFrame(VertFrame):
-    stretch_height = True
+class TimetableFrame(Frame):
+    sizing_x = Frame.SIZING.FIT
+    bordered = True
 
     def __init__(self, weekdata):
         self.weekdata = weekdata
         weekdata.timetableframe = self
-        self.header = self.create(
-            TimetableHeaderPad,
-            self.weekdata,
-        )
-        self.timetable = self.create(
-            TimetablePad,
-            self.weekdata,
-            height=self.weekdata.nr_timesegments,
-        )
+
+    def spawner(self):
+        self.header = self.spawn(TimetableHeaderPad(self.weekdata))
+        self.timetable = self.spawn(TimetablePad(self.weekdata))
 
 
 class ActivityTablePad(VertScrollPad):
-    new_str = " + new"
-    stretch_width = True
+    stretch_clipwidth = True
+    min_width = 12
+
     input = Input()
+
+    new_str = " + new"
 
     def __init__(self, weekdata):
         self.weekdata = weekdata
-        self.namewidth = self.width - 12
+        self.height = len(weekdata.activities) + 1
         self.copy_activities()
         self.cursor = 0
-        self.input.install(self)
 
     def copy_activities(self):
         self.activities_names = [e.name for e in self.weekdata.activities]
@@ -665,7 +710,7 @@ class ActivityTablePad(VertScrollPad):
         self.pad.move(i, 11)
         self.pad.clrtoeol()
         if self.namewidth > 0:
-            self.pad.addstr(i, 11, self.activities_names[i][-self.namewidth :])
+            self.pad.addstr(i, 11, self.activities_names[i][: self.namewidth])
         self.pad.chgat(i, 0, self.activities_colors[i] + curses.A_REVERSE)
 
     def draw_activities(self):
@@ -748,9 +793,7 @@ class ActivityTablePad(VertScrollPad):
 
             @seizedinput.on_key(curses.KEY_BACKSPACE, ord("\b"))
             def backspace(_):
-                self.activities_names[self.cursor] = self.activities_names[self.cursor][
-                    :-1
-                ]
+                self.activities_names[self.cursor] = self.activities_names[self.cursor][:-1]
                 if len(self.activities_names[self.cursor]) < self.namewidth:
                     self.pad.addch(
                         self.cursor,
@@ -779,9 +822,7 @@ class ActivityTablePad(VertScrollPad):
         colors_str = [f"{r:03d}", f"{g:03d}", f"{b:03d}"]
         self.color_index = 0
         self.digit_index = 0
-        self.activities_names[
-            self.cursor
-        ] = f"R {colors_str[0]} | G {colors_str[1]} | B {colors_str[2]}"
+        self.activities_names[self.cursor] = f"R {colors_str[0]} | G {colors_str[1]} | B {colors_str[2]}"
         self.draw_activity(self.cursor)
         self.refresh()
 
@@ -797,18 +838,14 @@ class ActivityTablePad(VertScrollPad):
             @seizedinput.on_key(*range(ord("0"), ord("9") + 1))
             def type_digit(_):
                 colors_str[self.color_index] = (
-                    colors_str[self.color_index][: self.digit_index]
-                    + chr(seizedinput.c)
-                    + colors_str[self.color_index][self.digit_index + 1 :]
+                    colors_str[self.color_index][: self.digit_index] + chr(seizedinput.c) + colors_str[self.color_index][self.digit_index + 1 :]
                 )
                 self.digit_index += 1
                 self.digit_index %= 3
                 r, g, b = map(int, colors_str)
                 activity.change_color(r, g, b)
                 self.activities_colors[self.cursor] = activity.color()
-                self.activities_names[
-                    self.cursor
-                ] = f"R {colors_str[0]} | G {colors_str[1]} | B {colors_str[2]}"
+                self.activities_names[self.cursor] = f"R {colors_str[0]} | G {colors_str[1]} | B {colors_str[2]}"
                 self.draw_activity(self.cursor)
                 self.refresh()
 
@@ -831,20 +868,15 @@ class ActivityHeaderPad(Pad):
         self.pad.addstr(0, 11, "name")
 
 
-class ActivityFrame(VertFrame):
-    stretch_width = True
-    stretch_height = True
-    min_width = 30
+class ActivityFrame(Frame):
+    bordered = True
 
     def __init__(self, weekdata):
         self.weekdata = weekdata
-        weekdata.activityframe = self
-        self.header = self.create(ActivityHeaderPad)
-        self.activitytable = self.create(
-            ActivityTablePad,
-            self.weekdata,
-            height=len(self.weekdata.activities) + 1,
-        )
+
+    def spawner(self):
+        self.header = self.spawn(ActivityHeaderPad())
+        self.activitytable = self.spawn(ActivityTablePad(self.weekdata))
 
 
 class Activity:
@@ -863,16 +895,8 @@ class Activity:
         curses.init_pair(Activity.color_counter, self.primary_color, 0)
         self.color_pair = Activity.color_pair_counter
 
-        Activity.color_counter = (
-            Activity.color_counter + 1
-            if Activity.color_counter != curses.COLORS - 1
-            else 16
-        )
-        Activity.color_pair_counter = (
-            Activity.color_pair_counter + 1
-            if Activity.color_pair_counter != curses.COLOR_PAIRS - 1
-            else 1
-        )
+        Activity.color_counter = Activity.color_counter + 1 if Activity.color_counter != curses.COLORS - 1 else 16
+        Activity.color_pair_counter = Activity.color_pair_counter + 1 if Activity.color_pair_counter != curses.COLOR_PAIRS - 1 else 1
 
     def change_color(self, r, g, b):
         curses.init_color(self.primary_color, r, g, b)
@@ -901,17 +925,13 @@ class Timeslot:
         try:
             plan = activities[plan]
         except KeyError:
-            log.error(
-                f"Could not find an activity with name '{plan}' referenced in timeslot's planned activity."
-            )
+            log.error(f"Could not find an activity with name '{plan}' referenced in timeslot's planned activity.")
         if verify == "-":
             return cls(plan, None)
         try:
             verify = activities[verify]
         except KeyError:
-            log.error(
-                f"Could not find an activity with name '{verify}' referenced in timeslot's verify activity."
-            )
+            log.error(f"Could not find an activity with name '{verify}' referenced in timeslot's verify activity.")
         return cls(plan, verify)
 
 
@@ -957,6 +977,16 @@ class WeekData:
             self.timetable[y][x].plan = activity
         else:
             self.timetable[y][x].verify = activity
+
+    def change_timesegments(self, nr_timesegments):
+        if self.nr_timesegments == nr_timesegments:
+            return
+        if nr_timesegments > self.nr_timesegments:
+            ratio = nr_timesegments // self.nr_timesegments
+            self.timetable = [self.timetable[i // ratio] for i in range(nr_timesegments)]
+        else:
+            ratio = self.nr_timesegments // nr_timesegments
+            self.timetable = [self.timetable[i * ratio] for i in range(nr_timesegments)]
 
     @classmethod
     def dummy(cls, nr_timesegments, nr_activities=10):
@@ -1028,9 +1058,7 @@ class Parser:
         activities = self.parse_activities(nr_activities)
         timetable = self.parse_timetable(nr_timesegments, activities)
         self.reset_seek()
-        return WeekData(
-            nr_timesegments, list(activities.values()), timetable, week, year
-        )
+        return WeekData(nr_timesegments, list(activities.values()), timetable, week, year)
 
     def parse_activities(self, nr_activities: int) -> dict:
         """Helper function for parse_week : parses the activities of a week"""
@@ -1048,9 +1076,7 @@ class Parser:
             row = self.parse_next_line(14)
             for j in range(7):
                 try:
-                    timetable[i][j] = Timeslot.from_strings(
-                        row[2 * j], row[2 * j + 1], activities
-                    )
+                    timetable[i][j] = Timeslot.from_strings(row[2 * j], row[2 * j + 1], activities)
                 except ParseError:
                     log.error(
                         f"Could not parse timeslot in file {self.dbfile_path} line {self.line} column {j} from '{row[2 * j]}' and '{row[2 * j + 1]}'"
@@ -1062,16 +1088,12 @@ class Parser:
         """Parses the next line from the file, returning a list of strings split by the delimiter."""
         line = self.file.readline()
         if line == "":
-            log.info(
-                f"End of file reached in file {self.dbfile_path} line {self.line+1}"
-            )
+            log.info(f"End of file reached in file {self.dbfile_path} line {self.line+1}")
             return None
         self.line += 1
         elements = line.replace("\n", "").split(self.delimiter)
         if expected_el != 0 and len(elements) != expected_el:
-            log.error(
-                f"Expected {expected_el} elements but parsed {len(elements)} elements in file {self.dbfile_path} line {self.line}."
-            )
+            log.error(f"Expected {expected_el} elements but parsed {len(elements)} elements in file {self.dbfile_path} line {self.line}.")
             raise ParseError
         return elements
 
@@ -1080,9 +1102,7 @@ class Parser:
         el = self.parse_next_line()
         while el is not None and el != args:
             el = self.parse_next_line()
-        log.error(
-            f"Could not find seeking elements '{args}' in file {self.dbfile_path}"
-        )
+        log.error(f"Could not find seeking elements '{args}' in file {self.dbfile_path}")
 
     def reset_seek(self):
         """Resets file seeker to the beginning of the file"""
@@ -1100,9 +1120,7 @@ class CleanExit(Exception):
 
 def main(stdscr):
     log.info(f"Terminal has color support: {curses.has_colors()}")
-    log.info(
-        f"Terminal has extended color support: {curses.has_extended_color_support()}"
-    )
+    log.info(f"Terminal has extended color support: {curses.has_extended_color_support()}")
     log.info(f"Terminal can change colors: {curses.can_change_color()}")
     log.info(f"Amount of terminal colors: {curses.COLORS}")
     log.info(f"Amount of terminal color pairs: {curses.COLOR_PAIRS}")
@@ -1114,7 +1132,6 @@ def main(stdscr):
     try:
         twoeight.input.start_loop()
     except CleanExit:
-        stdscr.clear()
         stdscr.refresh()
         exit()
 
